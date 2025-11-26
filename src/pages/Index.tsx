@@ -1,23 +1,60 @@
 import { useState } from "react";
-import { TemplateBuilder } from "@/components/report-builder/TemplateBuilder";
-import { FileText, Download, Save } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import Box from "@mui/material/Box";
+import { ReportCanvas } from "@/components/jasper-editor/ReportCanvas";
+import { TopToolbar } from "@/components/jasper-editor/TopToolbar";
+import { LeftPanel } from "@/components/jasper-editor/LeftPanel";
+import { RightPanel } from "@/components/jasper-editor/RightPanel";
 import { useToast } from "@/hooks/use-toast";
+
+const theme = createTheme({
+  palette: {
+    mode: "light",
+    primary: {
+      main: "#1976d2",
+    },
+    secondary: {
+      main: "#2c8aa8",
+    },
+    background: {
+      default: "#f5f7fa",
+      paper: "#ffffff",
+    },
+  },
+  components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        },
+      },
+    },
+  },
+});
 
 const Index = () => {
   const { toast } = useToast();
-  const [template, setTemplate] = useState<any>(null);
+  const [template, setTemplate] = useState<any>({
+    templateId: "",
+    reportId: "",
+    version: "v1",
+    meta: {
+      reportName: "New Report",
+      reportDate: new Date().toISOString().split("T")[0],
+      pageSize: "A4",
+      pageOrientation: "portrait",
+    },
+    columns: [],
+    rows: [],
+  });
+  
+  const [selectedCell, setSelectedCell] = useState<{
+    rowIndex: number;
+    cellIndex: number;
+  } | null>(null);
 
   const handleExportJSON = () => {
-    if (!template) {
-      toast({
-        title: "No template",
-        description: "Please create a template first",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -33,16 +70,6 @@ const Index = () => {
   };
 
   const handleSave = () => {
-    if (!template) {
-      toast({
-        title: "No template",
-        description: "Please create a template first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // TODO: Send to Spring Boot backend
     console.log("Saving template:", template);
     toast({
       title: "Template saved",
@@ -51,39 +78,36 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-card border-b border-border shadow-soft">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-primary">
-                <FileText className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Financial Report Builder</h1>
-                <p className="text-sm text-muted-foreground">Design configurable report templates</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button onClick={handleExportJSON} variant="outline" className="gap-2">
-                <Download className="h-4 w-4" />
-                Export JSON
-              </Button>
-              <Button onClick={handleSave} className="gap-2">
-                <Save className="h-4 w-4" />
-                Save Template
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
-        <TemplateBuilder onTemplateChange={setTemplate} />
-      </main>
-    </div>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        <TopToolbar 
+          onExport={handleExportJSON}
+          onSave={handleSave}
+          reportName={template.meta.reportName}
+        />
+        
+        <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          <LeftPanel 
+            template={template}
+            onTemplateChange={setTemplate}
+          />
+          
+          <ReportCanvas 
+            template={template}
+            onTemplateChange={setTemplate}
+            selectedCell={selectedCell}
+            onCellSelect={setSelectedCell}
+          />
+          
+          <RightPanel 
+            template={template}
+            onTemplateChange={setTemplate}
+            selectedCell={selectedCell}
+          />
+        </Box>
+      </Box>
+    </ThemeProvider>
   );
 };
 

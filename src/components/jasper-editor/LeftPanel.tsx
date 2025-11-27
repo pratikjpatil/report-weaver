@@ -40,8 +40,22 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     onTemplateChange(newTemplate);
   };
 
+  const [editingColumn, setEditingColumn] = useState<number | null>(null);
+
   const addColumn = () => {
     const newColumns = [...template.columns, { id: `C${template.columns.length + 1}`, name: `Column ${template.columns.length + 1}` }];
+    onTemplateChange({ ...template, columns: newColumns });
+  };
+
+  const updateColumn = (index: number, field: string, value: any) => {
+    const newColumns = [...template.columns];
+    if (field.includes(".")) {
+      const parts = field.split(".");
+      if (!newColumns[index].format) newColumns[index].format = {};
+      newColumns[index].format[parts[1]] = value;
+    } else {
+      newColumns[index][field] = value;
+    }
     onTemplateChange({ ...template, columns: newColumns });
   };
 
@@ -155,21 +169,102 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
               </Button>
               <List dense sx={{ bgcolor: "background.paper", borderRadius: 1 }}>
                 {template.columns.map((col: any, index: number) => (
-                  <ListItem
-                    key={index}
-                    secondaryAction={
-                      <IconButton edge="end" size="small" onClick={() => removeColumn(index)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText 
-                      primary={col.name || col.id} 
-                      secondary={col.id}
-                      primaryTypographyProps={{ variant: "body2" }}
-                      secondaryTypographyProps={{ variant: "caption" }}
-                    />
-                  </ListItem>
+                  <Box key={index} sx={{ mb: 1, p: 1, bgcolor: "background.paper", borderRadius: 1, border: "1px solid #e0e0e0" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                      <Typography variant="caption" fontWeight={600} color="primary">
+                        {col.id}
+                      </Typography>
+                      <Box>
+                        <IconButton size="small" onClick={() => setEditingColumn(editingColumn === index ? null : index)}>
+                          <ExpandMoreIcon fontSize="small" sx={{ transform: editingColumn === index ? "rotate(180deg)" : "none" }} />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => removeColumn(index)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    
+                    {editingColumn === index && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                        <TextField
+                          label="Column Name"
+                          size="small"
+                          value={col.name || ""}
+                          onChange={(e) => updateColumn(index, "name", e.target.value)}
+                          fullWidth
+                        />
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Format Type</InputLabel>
+                          <Select
+                            value={col.format?.type || "none"}
+                            onChange={(e) => updateColumn(index, "format.type", e.target.value)}
+                            label="Format Type"
+                          >
+                            <MenuItem value="none">None</MenuItem>
+                            <MenuItem value="currency">Currency</MenuItem>
+                            <MenuItem value="number">Number</MenuItem>
+                            <MenuItem value="date">Date</MenuItem>
+                          </Select>
+                        </FormControl>
+                        
+                        {col.format?.type === "currency" && (
+                          <>
+                            <TextField
+                              label="Currency Symbol"
+                              size="small"
+                              value={col.format?.currencySymbol || ""}
+                              onChange={(e) => updateColumn(index, "format.currencySymbol", e.target.value)}
+                              placeholder="$"
+                              fullWidth
+                            />
+                            <TextField
+                              label="Decimals"
+                              type="number"
+                              size="small"
+                              value={col.format?.decimals || 2}
+                              onChange={(e) => updateColumn(index, "format.decimals", parseInt(e.target.value))}
+                              fullWidth
+                            />
+                          </>
+                        )}
+                        
+                        {col.format?.type === "number" && (
+                          <>
+                            <TextField
+                              label="Decimals"
+                              type="number"
+                              size="small"
+                              value={col.format?.decimals || 0}
+                              onChange={(e) => updateColumn(index, "format.decimals", parseInt(e.target.value))}
+                              fullWidth
+                            />
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Thousand Separator</InputLabel>
+                              <Select
+                                value={col.format?.thousandSeparator || false}
+                                onChange={(e) => updateColumn(index, "format.thousandSeparator", e.target.value === "true")}
+                                label="Thousand Separator"
+                              >
+                                <MenuItem value="true">Yes</MenuItem>
+                                <MenuItem value="false">No</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </>
+                        )}
+                        
+                        {col.format?.type === "date" && (
+                          <TextField
+                            label="Date Format"
+                            size="small"
+                            value={col.format?.outputFormat || ""}
+                            onChange={(e) => updateColumn(index, "format.outputFormat", e.target.value)}
+                            placeholder="dd-MMM-yyyy"
+                            fullWidth
+                          />
+                        )}
+                      </Box>
+                    )}
+                  </Box>
                 ))}
               </List>
             </Box>

@@ -53,6 +53,8 @@ const Index = () => {
     rowIndex: number;
     cellIndex: number;
   } | null>(null);
+  
+  const [formulaMode, setFormulaMode] = useState(false);
 
   const handleExportJSON = () => {
     const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
@@ -98,12 +100,15 @@ const Index = () => {
             onTemplateChange={setTemplate}
             selectedCell={selectedCell}
             onCellSelect={setSelectedCell}
+            formulaMode={formulaMode}
           />
           
           <RightPanel 
             template={template}
             onTemplateChange={setTemplate}
             selectedCell={selectedCell}
+            formulaMode={formulaMode}
+            onFormulaModeChange={setFormulaMode}
           />
         </Box>
       </Box>

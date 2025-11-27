@@ -17,9 +17,11 @@ interface RightPanelProps {
   template: any;
   onTemplateChange: (template: any) => void;
   selectedCell: { rowIndex: number; cellIndex: number } | null;
+  formulaMode: boolean;
+  onFormulaModeChange: (mode: boolean) => void;
 }
 
-export const RightPanel = ({ template, onTemplateChange, selectedCell }: RightPanelProps) => {
+export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMode, onFormulaModeChange }: RightPanelProps) => {
   const updateCell = (field: string, value: any) => {
     if (!selectedCell) return;
     
@@ -71,8 +73,8 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell }: RightPa
   const row = template.rows[selectedCell.rowIndex];
   const cell = row?.cells?.[selectedCell.cellIndex];
   
-  // Handle dynamic row configuration
-  if (row?.rowType === "DYNAMIC") {
+  // Handle dynamic row configuration (cellIndex -1 means the dynamic row itself was selected)
+  if (row?.rowType === "DYNAMIC" || (row?.rowType === "DYNAMIC" && selectedCell.cellIndex === -1)) {
     return (
       <Paper 
         elevation={0} 
@@ -172,6 +174,8 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell }: RightPa
               template={template}
               onExpressionChange={(expr) => updateCell("expression", expr)}
               onVariablesChange={(vars) => updateCell("variables", vars)}
+              formulaMode={formulaMode}
+              onFormulaModeChange={onFormulaModeChange}
             />
           )}
 

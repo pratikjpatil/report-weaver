@@ -15,6 +15,11 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogActions from "@mui/material/DialogActions";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -28,6 +33,7 @@ interface LeftPanelProps {
 
 export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   const [expanded, setExpanded] = useState<string>("metadata");
+  const [deleteDialog, setDeleteDialog] = useState<{ type: 'row' | 'column', index: number, references: string[] } | null>(null);
 
   const updateMetadata = (field: string, value: any) => {
     const newTemplate = { ...template };
@@ -43,8 +49,28 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   const [editingColumn, setEditingColumn] = useState<number | null>(null);
 
   const addColumn = () => {
-    const newColumns = [...template.columns, { id: `C${template.columns.length + 1}`, name: `Column ${template.columns.length + 1}` }];
-    onTemplateChange({ ...template, columns: newColumns });
+    const newColumn = {
+      id: `C${template.columns.length + 1}`,
+      name: `Column ${template.columns.length + 1}`,
+      width: 150,
+    };
+    
+    // Add a new empty cell to all existing rows
+    const updatedRows = template.rows.map((row: any) => {
+      if (row.rowType === "DYNAMIC") {
+        return row; // Dynamic rows don't have cells
+      }
+      return {
+        ...row,
+        cells: [...(row.cells || []), { type: "TEXT", value: "" }],
+      };
+    });
+    
+    onTemplateChange({
+      ...template,
+      columns: [...template.columns, newColumn],
+      rows: updatedRows,
+    });
   };
 
   const updateColumn = (index: number, field: string, value: any) => {
@@ -59,9 +85,56 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     onTemplateChange({ ...template, columns: newColumns });
   };
 
+  const findColumnReferences = (colIndex: number) => {
+    const references: string[] = [];
+    template.rows.forEach((row: any, rowIndex: number) => {
+      row.cells?.forEach((cell: any, cellIndex: number) => {
+        if (cell.type === "FORMULA" && cell.expression) {
+          const pattern = new RegExp(`R\\d+C${colIndex + 1}\\b`, 'g');
+          if (pattern.test(cell.expression)) {
+            references.push(`Row ${rowIndex + 1}, Cell ${cellIndex + 1}`);
+          }
+        }
+      });
+    });
+    return references;
+  };
+
   const removeColumn = (index: number) => {
-    const newColumns = template.columns.filter((_: any, i: number) => i !== index);
-    onTemplateChange({ ...template, columns: newColumns });
+    const references = findColumnReferences(index);
+    if (references.length > 0) {
+      setDeleteDialog({ type: 'column', index, references });
+    } else {
+      confirmRemoveColumn(index);
+    }
+  };
+
+  const confirmRemoveColumn = (index: number) => {
+    // Remove cells at this column index from all rows
+    const updatedRows = template.rows.map((row: any) => {
+      if (row.rowType === "DYNAMIC") return row;
+      return {
+        ...row,
+        cells: (row.cells || []).filter((_: any, i: number) => i !== index),
+      };
+    });
+
+    // Update formula expressions to remove references to this column
+    const colPattern = new RegExp(`R(\\d+)C${index + 1}\\b`, 'g');
+    updatedRows.forEach((row: any) => {
+      row.cells?.forEach((cell: any) => {
+        if (cell.type === "FORMULA" && cell.expression) {
+          cell.expression = cell.expression.replace(colPattern, '').replace(/\s+/g, ' ').trim();
+        }
+      });
+    });
+
+    onTemplateChange({
+      ...template,
+      columns: template.columns.filter((_: any, i: number) => i !== index),
+      rows: updatedRows,
+    });
+    setDeleteDialog(null);
   };
 
   const addRow = (type: string) => {
@@ -84,9 +157,51 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     onTemplateChange({ ...template, rows: newRows });
   };
 
+  const findRowReferences = (rowIndex: number) => {
+    const references: string[] = [];
+    template.rows.forEach((row: any, rIndex: number) => {
+      row.cells?.forEach((cell: any, cellIndex: number) => {
+        if (cell.type === "FORMULA" && cell.expression) {
+          const pattern = new RegExp(`R${rowIndex + 1}C\\d+\\b`, 'g');
+          if (pattern.test(cell.expression)) {
+            references.push(`Row ${rIndex + 1}, Cell ${cellIndex + 1}`);
+          }
+        }
+      });
+    });
+    return references;
+  };
+
   const removeRow = (index: number) => {
-    const newRows = template.rows.filter((_: any, i: number) => i !== index);
-    onTemplateChange({ ...template, rows: newRows });
+    const references = findRowReferences(index);
+    if (references.length > 0) {
+      setDeleteDialog({ type: 'row', index, references });
+    } else {
+      confirmRemoveRow(index);
+    }
+  };
+
+  const confirmRemoveRow = (index: number) => {
+    // Update formula expressions to remove references to this row
+    const rowPattern = new RegExp(`R${index + 1}C(\\d+)\\b`, 'g');
+    const updatedRows = template.rows
+      .filter((_: any, i: number) => i !== index)
+      .map((row: any) => {
+        if (row.cells) {
+          row.cells.forEach((cell: any) => {
+            if (cell.type === "FORMULA" && cell.expression) {
+              cell.expression = cell.expression.replace(rowPattern, '').replace(/\s+/g, ' ').trim();
+            }
+          });
+        }
+        return row;
+      });
+
+    onTemplateChange({
+      ...template,
+      rows: updatedRows,
+    });
+    setDeleteDialog(null);
   };
 
   return (
@@ -258,18 +373,27 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                             size="small"
                             value={col.format?.outputFormat || ""}
                             onChange={(e) => updateColumn(index, "format.outputFormat", e.target.value)}
-                            placeholder="dd-MMM-yyyy"
-                            fullWidth
-                          />
-                        )}
-                      </Box>
-                    )}
-                  </Box>
-                ))}
-              </List>
-            </Box>
-          </AccordionDetails>
-        </Accordion>
+                             placeholder="dd-MMM-yyyy"
+                             fullWidth
+                           />
+                         )}
+                         
+                         <TextField
+                           label="Width (px)"
+                           type="number"
+                           size="small"
+                           value={col.width || 150}
+                           onChange={(e) => updateColumn(index, "width", parseInt(e.target.value) || 150)}
+                           fullWidth
+                         />
+                       </Box>
+                     )}
+                   </Box>
+                 ))}
+               </List>
+             </Box>
+           </AccordionDetails>
+         </Accordion>
 
         <Accordion expanded={expanded === "rows"} onChange={() => setExpanded(expanded === "rows" ? "" : "rows")}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -308,6 +432,41 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
           </AccordionDetails>
         </Accordion>
       </Box>
+
+      <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
+        <DialogTitle>Warning: References Found</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This {deleteDialog?.type} is referenced in the following formulas:
+          </DialogContentText>
+          <List dense>
+            {deleteDialog?.references.map((ref, idx) => (
+              <ListItem key={idx}>
+                <ListItemText primary={ref} />
+              </ListItem>
+            ))}
+          </List>
+          <DialogContentText sx={{ mt: 2 }}>
+            Deleting will remove these references from the formulas. Do you want to continue?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(null)}>Cancel</Button>
+          <Button 
+            onClick={() => {
+              if (deleteDialog?.type === 'column') {
+                confirmRemoveColumn(deleteDialog.index);
+              } else {
+                confirmRemoveRow(deleteDialog.index);
+              }
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete Anyway
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 };

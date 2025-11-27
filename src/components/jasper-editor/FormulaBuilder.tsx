@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
@@ -22,6 +22,8 @@ interface FormulaBuilderProps {
   template: any;
   onExpressionChange: (expression: string) => void;
   onVariablesChange: (variables: any) => void;
+  formulaMode: boolean;
+  onFormulaModeChange: (mode: boolean) => void;
 }
 
 export const FormulaBuilder = ({
@@ -30,22 +32,30 @@ export const FormulaBuilder = ({
   template,
   onExpressionChange,
   onVariablesChange,
+  formulaMode,
+  onFormulaModeChange,
 }: FormulaBuilderProps) => {
   const [showVariableDialog, setShowVariableDialog] = useState(false);
   const [newVarName, setNewVarName] = useState("");
   const [newVarType, setNewVarType] = useState("CELL_REF");
   const [newVarConfig, setNewVarConfig] = useState<any>({});
 
+  useEffect(() => {
+    const handleCellSelected = (event: any) => {
+      const cellRef = event.detail;
+      onExpressionChange(expression + (expression ? ' ' : '') + cellRef);
+    };
+
+    window.addEventListener('formula-cell-selected', handleCellSelected);
+    return () => window.removeEventListener('formula-cell-selected', handleCellSelected);
+  }, [expression, onExpressionChange]);
+
   const addOperator = (op: string) => {
     onExpressionChange(expression + ` ${op} `);
   };
 
-  const addCellReference = () => {
-    const rowNum = prompt("Enter row number (1-based):");
-    const colNum = prompt("Enter column number (1-based):");
-    if (rowNum && colNum) {
-      onExpressionChange(expression + `R${rowNum}C${colNum}`);
-    }
+  const toggleFormulaMode = () => {
+    onFormulaModeChange(!formulaMode);
   };
 
   const addVariable = () => {
@@ -127,12 +137,18 @@ export const FormulaBuilder = ({
         </Typography>
         <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
           <Button
-            variant="outlined"
+            variant={formulaMode ? "contained" : "outlined"}
             size="small"
-            startIcon={<AddIcon />}
-            onClick={addCellReference}
+            onClick={toggleFormulaMode}
+            sx={{ 
+              bgcolor: formulaMode ? "#ff9800" : undefined,
+              color: formulaMode ? "white" : undefined,
+              "&:hover": {
+                bgcolor: formulaMode ? "#f57c00" : undefined,
+              }
+            }}
           >
-            Cell (R#C#)
+            {formulaMode ? "Click cells to add (Active)" : "Select Cell from Canvas"}
           </Button>
           <Button
             variant="outlined"

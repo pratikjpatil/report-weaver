@@ -14,16 +14,25 @@ interface ReportCanvasProps {
   onTemplateChange: (template: any) => void;
   selectedCell: { rowIndex: number; cellIndex: number } | null;
   onCellSelect: (cell: { rowIndex: number; cellIndex: number } | null) => void;
+  formulaMode: boolean;
 }
 
 export const ReportCanvas = ({ 
   template, 
   onTemplateChange,
   selectedCell,
-  onCellSelect 
+  onCellSelect,
+  formulaMode 
 }: ReportCanvasProps) => {
-  const handleCellClick = (rowIndex: number, cellIndex: number) => {
-    onCellSelect({ rowIndex, cellIndex });
+  const handleCellClick = (rowIndex: number, cellIndex: number, event: React.MouseEvent) => {
+    if (formulaMode) {
+      // In formula mode, emit a custom event with cell reference
+      const cellRef = `R${rowIndex + 1}C${cellIndex + 1}`;
+      window.dispatchEvent(new CustomEvent('formula-cell-selected', { detail: cellRef }));
+      event.stopPropagation();
+    } else {
+      onCellSelect({ rowIndex, cellIndex });
+    }
   };
 
   const getCellValue = (cell: any) => {
@@ -48,12 +57,14 @@ export const ReportCanvas = ({
     <Box 
       sx={{ 
         flex: 1, 
-        bgcolor: "#f5f7fa",
+        bgcolor: formulaMode ? "#fff3e0" : "#f5f7fa",
         p: 3,
         overflow: "auto",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        cursor: formulaMode ? "crosshair" : "default",
+        transition: "background-color 0.3s ease",
       }}
     >
       <Paper 
@@ -67,6 +78,14 @@ export const ReportCanvas = ({
           boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
         }}
       >
+        {formulaMode && (
+          <Box sx={{ mb: 2, p: 2, bgcolor: "#ff9800", color: "white", borderRadius: 1, textAlign: "center" }}>
+            <Typography variant="body2" fontWeight={600}>
+              📍 Formula Building Mode Active - Click any cell to add it to your formula
+            </Typography>
+          </Box>
+        )}
+
         <Box sx={{ mb: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography variant="h5" fontWeight={600}>
             {template.meta.reportName}
@@ -107,12 +126,13 @@ export const ReportCanvas = ({
                       sx={{ 
                         fontWeight: 600,
                         fontSize: "0.875rem",
-                        minWidth: 150,
+                        width: col.width || 150,
+                        minWidth: col.width || 150,
                       }}
                     >
                       {col.name}
                       <Typography variant="caption" display="block" color="text.secondary">
-                        {col.id}
+                        {col.id} ({col.width || 150}px)
                       </Typography>
                     </TableCell>
                   ))}
@@ -150,13 +170,19 @@ export const ReportCanvas = ({
                     {row.rowType === "DYNAMIC" ? (
                       <TableCell 
                         colSpan={template.columns.length}
+                        onClick={() => onCellSelect({ rowIndex, cellIndex: -1 })}
                         sx={{ 
-                          bgcolor: "#e8f5e9",
+                          bgcolor: selectedCell?.rowIndex === rowIndex ? "#c8e6c9" : "#e8f5e9",
                           fontStyle: "italic",
                           color: "text.secondary",
+                          cursor: "pointer",
+                          border: selectedCell?.rowIndex === rowIndex ? "2px solid #388e3c" : "1px solid #e0e0e0",
+                          "&:hover": {
+                            bgcolor: "#c8e6c9",
+                          },
                         }}
                       >
-                        🔄 Dynamic rows from {row.dynamicConfig?.table || "database"}
+                        🔄 Dynamic rows from {row.dynamicConfig?.table || "database"} - Click to configure
                       </TableCell>
                     ) : (
                       row.cells?.map((cell: any, cellIndex: number) => {
@@ -167,18 +193,18 @@ export const ReportCanvas = ({
                         return (
                           <TableCell
                             key={cellIndex}
-                            onClick={() => handleCellClick(rowIndex, cellIndex)}
+                            onClick={(e) => handleCellClick(rowIndex, cellIndex, e)}
                             colSpan={cell.render?.colspan || 1}
                             rowSpan={cell.render?.rowspan || 1}
                             sx={{
-                              cursor: "pointer",
+                              cursor: formulaMode ? "crosshair" : "pointer",
                               position: "relative",
-                              bgcolor: isSelected ? "#e3f2fd" : "white",
+                              bgcolor: isSelected ? "#e3f2fd" : (formulaMode ? "#fff9c4" : "white"),
                               border: isSelected ? "2px solid #1976d2" : "1px solid #e0e0e0",
                               fontWeight: cell.render?.bold ? 600 : 400,
                               textAlign: cell.render?.align || "left",
                               "&:hover": {
-                                bgcolor: isSelected ? "#e3f2fd" : "#f5f5f5",
+                                bgcolor: isSelected ? "#e3f2fd" : (formulaMode ? "#fff59d" : "#f5f5f5"),
                               },
                               transition: "all 0.2s ease",
                             }}

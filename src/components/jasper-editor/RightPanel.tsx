@@ -10,6 +10,8 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
+import { FormulaBuilder } from "./FormulaBuilder";
+import { DynamicRowConfig } from "./DynamicRowConfig";
 
 interface RightPanelProps {
   template: any;
@@ -66,7 +68,46 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell }: RightPa
     );
   }
 
-  const cell = template.rows[selectedCell.rowIndex]?.cells[selectedCell.cellIndex];
+  const row = template.rows[selectedCell.rowIndex];
+  const cell = row?.cells?.[selectedCell.cellIndex];
+  
+  // Handle dynamic row configuration
+  if (row?.rowType === "DYNAMIC") {
+    return (
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          width: 350, 
+          borderLeft: "1px solid #e0e0e0",
+          overflow: "auto",
+          bgcolor: "#fafafa",
+        }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600} sx={{ color: "text.secondary" }}>
+              DYNAMIC ROW
+            </Typography>
+            <Chip 
+              label={`Row ${selectedCell.rowIndex + 1}`}
+              size="small"
+              sx={{ fontSize: "0.7rem" }}
+            />
+          </Box>
+
+          <DynamicRowConfig
+            dynamicConfig={row.dynamicConfig || {}}
+            onConfigChange={(config) => {
+              const newTemplate = { ...template };
+              newTemplate.rows[selectedCell.rowIndex].dynamicConfig = config;
+              onTemplateChange(newTemplate);
+            }}
+          />
+        </Box>
+      </Paper>
+    );
+  }
+  
   if (!cell) return null;
 
   return (
@@ -125,30 +166,13 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell }: RightPa
           )}
 
           {cell.type === "FORMULA" && (
-            <>
-              <TextField
-                label="Formula Expression"
-                size="small"
-                value={cell.expression || ""}
-                onChange={(e) => updateCell("expression", e.target.value)}
-                placeholder="e.g., maxBal - minBal"
-                fullWidth
-              />
-              <TextField
-                label="Variables (JSON)"
-                size="small"
-                multiline
-                rows={4}
-                value={JSON.stringify(cell.variables || {}, null, 2)}
-                onChange={(e) => {
-                  try {
-                    updateCell("variables", JSON.parse(e.target.value));
-                  } catch {}
-                }}
-                fullWidth
-                sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
-              />
-            </>
+            <FormulaBuilder
+              expression={cell.expression || ""}
+              variables={cell.variables || {}}
+              template={template}
+              onExpressionChange={(expr) => updateCell("expression", expr)}
+              onVariablesChange={(vars) => updateCell("variables", vars)}
+            />
           )}
 
           {(cell.type?.startsWith("DB_")) && (

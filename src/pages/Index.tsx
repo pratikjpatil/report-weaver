@@ -36,17 +36,26 @@ const theme = createTheme({
 const Index = () => {
   const { toast } = useToast();
   const [template, setTemplate] = useState<any>({
-    templateId: "",
-    reportId: "",
-    version: "v1",
-    meta: {
-      reportName: "New Report",
-      reportDate: new Date().toISOString().split("T")[0],
+    templateMeta: {
+      templateId: "",
+      version: "1.0",
+      description: "",
       pageSize: "A4",
       pageOrientation: "portrait",
+      headerLayout: "1-col"
     },
-    columns: [],
-    rows: [],
+    reportMeta: {
+      reportName: "New Report",
+      reportId: "",
+      extras: []
+    },
+    reportData: {
+      columns: [
+        { id: "col_1", name: "Column 1", format: { type: "TEXT" } },
+        { id: "col_2", name: "Column 2", format: { type: "NUMBER" } },
+      ],
+      rows: [],
+    }
   });
   
   const [selectedCell, setSelectedCell] = useState<{
@@ -61,7 +70,7 @@ const Index = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${template.meta?.reportName || "report"}-template.json`;
+    a.download = `${template.reportMeta?.reportName || "report"}-template.json`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -86,7 +95,7 @@ const Index = () => {
         <TopToolbar 
           onExport={handleExportJSON}
           onSave={handleSave}
-          reportName={template.meta.reportName}
+          reportName={template.reportMeta.reportName}
         />
         
         <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -97,9 +106,8 @@ const Index = () => {
           
           <ReportCanvas 
             template={template}
-            onTemplateChange={setTemplate}
             selectedCell={selectedCell}
-            onCellSelect={setSelectedCell}
+            onCellSelect={(rowIndex, cellIndex) => setSelectedCell({ rowIndex, cellIndex })}
             formulaMode={formulaMode}
           />
           

@@ -37,36 +37,35 @@ const Index = () => {
   const { toast } = useToast();
   const [template, setTemplate] = useState<any>({
     templateMeta: {
-      templateId: "",
-      version: "1.0",
-      description: "",
+      templateId: "1018404",
+      version: "v1",
       pageSize: "A4",
       pageOrientation: "portrait",
-      headerLayout: "1-col"
     },
     reportMeta: {
-      reportName: "New Report",
+      reportName: "",
       reportId: "",
-      extras: []
+      extras: [
+        { name: "Report Date", value: new Date().toISOString().split("T")[0] },
+      ],
     },
     reportData: {
-      columns: [
-        { id: "col_1", name: "Column 1", format: { type: "TEXT" } },
-        { id: "col_2", name: "Column 2", format: { type: "NUMBER" } },
-      ],
+      columns: [],
       rows: [],
-    }
+    },
   });
-  
+
   const [selectedCell, setSelectedCell] = useState<{
     rowIndex: number;
     cellIndex: number;
   } | null>(null);
-  
+
   const [formulaMode, setFormulaMode] = useState(false);
 
   const handleExportJSON = () => {
-    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(template, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -91,27 +90,32 @@ const Index = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-        <TopToolbar 
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100vh",
+          overflow: "hidden",
+        }}
+      >
+        <TopToolbar
           onExport={handleExportJSON}
           onSave={handleSave}
           reportName={template.reportMeta.reportName}
         />
-        
+
         <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <LeftPanel 
+          <LeftPanel template={template} onTemplateChange={setTemplate} />
+
+          <ReportCanvas
             template={template}
             onTemplateChange={setTemplate}
-          />
-          
-          <ReportCanvas 
-            template={template}
             selectedCell={selectedCell}
-            onCellSelect={(rowIndex, cellIndex) => setSelectedCell({ rowIndex, cellIndex })}
+            onCellSelect={setSelectedCell}
             formulaMode={formulaMode}
           />
-          
-          <RightPanel 
+
+          <RightPanel
             template={template}
             onTemplateChange={setTemplate}
             selectedCell={selectedCell}

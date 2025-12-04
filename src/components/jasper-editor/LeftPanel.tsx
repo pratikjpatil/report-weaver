@@ -1,26 +1,30 @@
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import Divider from "@mui/material/Divider";
-import Collapse from "@mui/material/Collapse";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import { useState } from "react";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import ViewAgendaIcon from "@mui/icons-material/ViewAgenda";
 
 interface LeftPanelProps {
   template: any;
@@ -28,321 +32,654 @@ interface LeftPanelProps {
 }
 
 export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
-  const [expandedSection, setExpandedSection] = useState<string | null>("metadata");
-  const [expandedColumn, setExpandedColumn] = useState<number | null>(null);
-  const [deleteDialog, setDeleteDialog] = useState<{ type: 'row' | 'column', index: number, dependencies: string[] } | null>(null);
+  const [expanded, setExpanded] = useState<string>("metadata");
+  const [deleteDialog, setDeleteDialog] = useState<{
+    type: "row" | "column";
+    index: number;
+    references: string[];
+    colId: string;
+    rowId: string;
+  } | null>(null);
 
-  const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
-
-  const updateMetadata = (field: string, value: string) => {
+  const updateMetadata = (field: string, value: any) => {
     const newTemplate = { ...template };
-    if (field.startsWith('templateMeta.')) {
-      const key = field.replace('templateMeta.', '');
-      newTemplate.templateMeta[key] = value;
-    } else if (field.startsWith('reportMeta.')) {
-      const key = field.replace('reportMeta.', '');
-      newTemplate.reportMeta[key] = value;
+    if (field.startsWith("reportMeta.")) {
+      const metaField = field.split(".")[1];
+      newTemplate.reportMeta[metaField] = value;
+    } else if (field.startsWith("templateMeta.")) {
+      const metaField = field.split(".")[1];
+      newTemplate.templateMeta[metaField] = value;
+    } else {
+      newTemplate[field] = value;
     }
     onTemplateChange(newTemplate);
   };
 
+  const [editingColumn, setEditingColumn] = useState<number | null>(null);
+
   const addColumn = () => {
-    const newTemplate = { ...template };
-    const colIndex = newTemplate.reportData.columns.length + 1;
-    const newColumn = { 
-      id: `col_${colIndex}`,
-      name: `Column ${colIndex}`, 
-      format: { type: "TEXT" } 
+    const newColumn = {
+      id: `C_${template.reportData.columns.length + 1}`,
+      name: `Column ${template.reportData.columns.length + 1}`,
+      width: 150,
     };
-    newTemplate.reportData.columns.push(newColumn);
-    
-    newTemplate.reportData.rows.forEach((row: any) => {
-      if (row.rowType !== "DYNAMIC") {
-        if (!row.cells) row.cells = [];
-        row.cells.push({
-          id: `R:${row.id}~C:${newColumn.id}`,
-          type: "TEXT",
-          value: "",
-          render: {}
-        });
+
+    // Add a new empty cell to all existing rows
+    const updatedRows = template.reportData.rows.map((row: any) => {
+      if (row.rowType === "DYNAMIC") {
+        return row; // Dynamic rows don't have cells
       }
+      return {
+        ...row,
+        cells: [...(row.cells || []), { type: "TEXT", value: "" }],
+      };
     });
-    
-    onTemplateChange(newTemplate);
+
+    onTemplateChange({
+      ...template,
+      reportData: {
+        columns: [...template.reportData.columns, newColumn],
+        rows: updatedRows,
+      },
+    });
   };
 
   const updateColumn = (index: number, field: string, value: any) => {
-    const newTemplate = { ...template };
-    const column = newTemplate.reportData.columns[index];
-    const oldId = column.id;
-    
-    if (field.includes('.')) {
-      const parts = field.split('.');
-      let current = column;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (!current[parts[i]]) current[parts[i]] = {};
-        current = current[parts[i]];
-      }
-      current[parts[parts.length - 1]] = value;
+    const newColumns = [...template.reportData.columns];
+    if (field.includes(".")) {
+      const parts = field.split(".");
+      if (!newColumns[index].format) newColumns[index].format = {};
+      newColumns[index].format[parts[1]] = value;
     } else {
-      column[field] = value;
+      newColumns[index][field] = value;
     }
-    
-    if (field === 'id' && oldId !== value) {
-      newTemplate.reportData.rows.forEach((row: any) => {
-        row.cells?.forEach((cell: any) => {
-          if (cell.id && cell.id.includes(`C:${oldId}`)) {
-            cell.id = `R:${row.id}~C:${value}`;
-          }
-        });
-      });
-    }
-    
-    onTemplateChange(newTemplate);
+    onTemplateChange({
+      ...template,
+      reportData: {
+        rows: template.reportData.rows,
+        columns: newColumns,
+      },
+    });
   };
 
-  const findColumnReferences = (columnId: string) => {
-    const dependencies: string[] = [];
+  const findColumnReferences = (colId: string) => {
+    const references: string[] = [];
     template.reportData.rows.forEach((row: any, rowIndex: number) => {
       row.cells?.forEach((cell: any, cellIndex: number) => {
-        if (cell.type === "FORMULA" && cell.expression && cell.expression.includes(`C:${columnId}`)) {
-          dependencies.push(`Row ${rowIndex + 1}, Cell ${cellIndex + 1}`);
+        if (cell.type === "FORMULA" && cell.expression) {
+          // const pattern = new RegExp(`R\\d+C${colIndex + 1}\\b`, "g");
+          const pattern = new RegExp(`cell_R_.*?_${colId}\\b`, "g");
+          if (pattern.test(cell.expression)) {
+            references.push(`Row ${rowIndex + 1}, Cell ${cellIndex + 1}`);
+          }
         }
       });
     });
-    return dependencies;
+    return references;
   };
 
-  const removeColumnReferences = (columnId: string) => {
-    const newTemplate = { ...template };
-    newTemplate.reportData.rows.forEach((row: any) => {
+  const removeColumn = (colId: string, index: number) => {
+    const references = findColumnReferences(colId);
+    if (references.length > 0) {
+      setDeleteDialog({ type: "column", index, references, colId, rowId: "" });
+    } else {
+      confirmRemoveColumn(colId, index);
+    }
+  };
+
+  const confirmRemoveColumn = (colId: string, index: number) => {
+    // Remove cells at this column index from all rows
+    const updatedRows = template.reportData.rows.map((row: any) => {
+      if (row.rowType === "DYNAMIC") return row;
+      return {
+        ...row,
+        cells: (row.cells || []).filter(
+          (_: any, i: number) => template.reportData.columns[i].id !== colId
+        ),
+      };
+    });
+
+    // console.log("Yes i am innnn");
+
+    // Update formula expressions to remove references to this column
+    // const colPattern = new RegExp(`R(\\d+)C${index + 1}\\b`, "g");
+
+    const colPattern = new RegExp(`cell_R_.*?_${colId}\\b`, "g");
+
+    updatedRows.forEach((row: any) => {
       row.cells?.forEach((cell: any) => {
         if (cell.type === "FORMULA" && cell.expression) {
-          cell.expression = cell.expression.replace(new RegExp(`R:[^~]+~C:${columnId}`, 'g'), '').replace(/\s+/g, ' ').trim();
+          cell.expression = cell.expression
+            .replace(colPattern, "")
+            .replace(/\s+/g, " ")
+            .trim();
         }
       });
     });
-    onTemplateChange(newTemplate);
-  };
 
-  const deleteColumn = (index: number) => {
-    const columnId = template.reportData.columns[index].id;
-    const dependencies = findColumnReferences(columnId);
-    
-    if (dependencies.length > 0) {
-      setDeleteDialog({ type: 'column', index, dependencies });
-      return;
-    }
-    
-    performColumnDelete(index);
-  };
-
-  const performColumnDelete = (index: number) => {
-    const columnId = template.reportData.columns[index].id;
-    removeColumnReferences(columnId);
-    
-    const newTemplate = { ...template };
-    newTemplate.reportData.columns.splice(index, 1);
-    newTemplate.reportData.rows.forEach((row: any) => {
-      if (row.cells && row.cells.length > index) {
-        row.cells.splice(index, 1);
-      }
+    onTemplateChange({
+      ...template,
+      reportData: {
+        columns: template.reportData.columns.filter(
+          (c: any, i: number) => c.id !== colId
+        ),
+        rows: updatedRows,
+      },
     });
-    
-    onTemplateChange(newTemplate);
     setDeleteDialog(null);
   };
 
-  const moveColumn = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= template.reportData.columns.length) return;
+  const addRow = (type: string) => {
+    const newRow: any = {
+      rowType: type,
+      id: `R_${template.reportData.rows.length + 1}`,
+      cells: template.reportData.columns.map(() => ({
+        type: "TEXT",
+        value: "",
+      })),
+    };
 
-    const newTemplate = { ...template };
-    [newTemplate.reportData.columns[index], newTemplate.reportData.columns[newIndex]] = 
-      [newTemplate.reportData.columns[newIndex], newTemplate.reportData.columns[index]];
+    if (type === "DYNAMIC") {
+      newRow.dynamicConfig = {
+        type: "DB_LIST",
+        table: "",
+        select: [],
+        filters: {},
+      };
+      newRow.cells = [];
+    }
 
-    newTemplate.reportData.rows.forEach((row: any) => {
-      if (row.cells && row.cells.length > Math.max(index, newIndex)) {
-        [row.cells[index], row.cells[newIndex]] = [row.cells[newIndex], row.cells[index]];
-      }
+    const newRows = [...template.reportData.rows, newRow];
+    onTemplateChange({
+      ...template,
+      reportData: { ...template.reportData, rows: newRows },
     });
-
-    onTemplateChange(newTemplate);
-  };
-
-  const addRow = (rowType: string, insertAtIndex?: number) => {
-    const newTemplate = { ...template };
-    const rowId = `row_${Date.now()}`;
-    const newRow: any = { id: rowId, rowType, cells: [] };
-    
-    if (rowType === "DYNAMIC") {
-      newRow.dynamicConfig = { type: "DB_LIST", table: "", select: [], filters: {}, orderby: "", limit: 100 };
-    } else {
-      newTemplate.reportData.columns.forEach((col: any) => {
-        newRow.cells.push({ id: `R:${rowId}~C:${col.id}`, type: "TEXT", value: "", render: {} });
-      });
-    }
-    
-    if (insertAtIndex !== undefined) {
-      newTemplate.reportData.rows.splice(insertAtIndex + 1, 0, newRow);
-    } else {
-      newTemplate.reportData.rows.push(newRow);
-    }
-    
-    onTemplateChange(newTemplate);
   };
 
   const findRowReferences = (rowId: string) => {
-    const dependencies: string[] = [];
-    template.reportData.rows.forEach((row: any, rowIndex: number) => {
+    const references: string[] = [];
+    template.reportData.rows.forEach((row: any, rIndex: number) => {
       row.cells?.forEach((cell: any, cellIndex: number) => {
-        if (cell.type === "FORMULA" && cell.expression && cell.expression.includes(`R:${rowId}~`)) {
-          dependencies.push(`Row ${rowIndex + 1}, Cell ${cellIndex + 1}`);
-        }
-      });
-    });
-    return dependencies;
-  };
-
-  const removeRowReferences = (rowId: string) => {
-    const newTemplate = { ...template };
-    newTemplate.reportData.rows.forEach((row: any) => {
-      row.cells?.forEach((cell: any) => {
         if (cell.type === "FORMULA" && cell.expression) {
-          cell.expression = cell.expression.replace(new RegExp(`R:${rowId}~C:[^\\s]+`, 'g'), '').replace(/\s+/g, ' ').trim();
+          // const pattern = new RegExp(`${rowId}C:\\d+\\b`, "g");
+          const pattern = new RegExp(`cell_${rowId}_C_.*?\\b`, "g");
+          if (pattern.test(cell.expression)) {
+            references.push(`Row ${rIndex + 1}, Cell ${cellIndex + 1}`);
+          }
         }
       });
     });
-    onTemplateChange(newTemplate);
+    return references;
   };
 
-  const deleteRow = (index: number) => {
-    const rowId = template.reportData.rows[index].id;
-    const dependencies = findRowReferences(rowId);
-    
-    if (dependencies.length > 0) {
-      setDeleteDialog({ type: 'row', index, dependencies });
-      return;
+  const removeRow = (rowId: string, index: number) => {
+    const references = findRowReferences(rowId);
+    if (references.length > 0) {
+      setDeleteDialog({ type: "row", index, references, colId: "", rowId });
+    } else {
+      confirmRemoveRow(rowId, index);
     }
-    
-    performRowDelete(index);
   };
 
-  const performRowDelete = (index: number) => {
-    const rowId = template.reportData.rows[index].id;
-    removeRowReferences(rowId);
-    
-    const newTemplate = { ...template };
-    newTemplate.reportData.rows.splice(index, 1);
-    onTemplateChange(newTemplate);
+  const confirmRemoveRow = (rowId: string, index: number) => {
+    // Update formula expressions to remove references to this row
+    // const rowPattern = new RegExp(`R${index + 1}C(\\d+)\\b`, "g");
+    const rowPattern = new RegExp(`cell_${rowId}_C_.*?\\b`, "g");
+
+    const updatedRows = template.reportData.rows
+      .filter((r: any, i: number) => r.id !== rowId)
+      .map((row: any) => {
+        if (row.cells) {
+          row.cells.forEach((cell: any) => {
+            if (cell.type === "FORMULA" && cell.expression) {
+              cell.expression = cell.expression
+                .replace(rowPattern, "")
+                .replace(/\s+/g, " ")
+                .trim();
+            }
+          });
+        }
+        return row;
+      });
+    const updatedRowsReportData = {
+      ...template.reportData,
+      rows: updatedRows,
+    };
+    onTemplateChange({
+      ...template,
+      reportData: updatedRowsReportData,
+    });
     setDeleteDialog(null);
   };
 
-  const moveRow = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= template.reportData.rows.length) return;
-
-    const newTemplate = { ...template };
-    [newTemplate.reportData.rows[index], newTemplate.reportData.rows[newIndex]] = 
-      [newTemplate.reportData.rows[newIndex], newTemplate.reportData.rows[index]];
-    onTemplateChange(newTemplate);
-  };
-
   return (
-    <>
-      <Paper elevation={0} sx={{ width: 300, borderRight: "1px solid #e0e0e0", overflow: "auto", bgcolor: "#fafafa" }}>
-        <Box sx={{ p: 2 }}>
-          <Box sx={{ mb: 2 }}>
-            <Button fullWidth onClick={() => toggleSection("metadata")} endIcon={expandedSection === "metadata" ? <ExpandLessIcon /> : <ExpandMoreIcon />} sx={{ justifyContent: "space-between", textTransform: "none", fontWeight: 600 }}>Report Metadata</Button>
-            <Collapse in={expandedSection === "metadata"}>
-              <Box sx={{ p: 2, bgcolor: "background.paper", borderRadius: 1, mt: 1 }}>
-                <TextField label="Report Name" size="small" fullWidth value={template.reportMeta.reportName} onChange={(e) => updateMetadata("reportMeta.reportName", e.target.value)} sx={{ mb: 2 }} />
-                <TextField label="Report ID" size="small" fullWidth value={template.reportMeta.reportId} onChange={(e) => updateMetadata("reportMeta.reportId", e.target.value)} sx={{ mb: 2 }} />
-                <TextField label="Template ID" size="small" fullWidth value={template.templateMeta.templateId} onChange={(e) => updateMetadata("templateMeta.templateId", e.target.value)} sx={{ mb: 2 }} />
-                <TextField label="Page Size" size="small" fullWidth value={template.templateMeta.pageSize} onChange={(e) => updateMetadata("templateMeta.pageSize", e.target.value)} sx={{ mb: 2 }} />
-                <TextField label="Orientation" size="small" fullWidth value={template.templateMeta.pageOrientation} onChange={(e) => updateMetadata("templateMeta.pageOrientation", e.target.value)} />
-              </Box>
-            </Collapse>
-          </Box>
-          <Divider sx={{ my: 2 }} />
-          <Box sx={{ mb: 2 }}>
-            <Button fullWidth onClick={() => toggleSection("columns")} endIcon={expandedSection === "columns" ? <ExpandLessIcon /> : <ExpandMoreIcon />} sx={{ justifyContent: "space-between", textTransform: "none", fontWeight: 600 }}>Columns ({template.reportData.columns.length})</Button>
-            <Collapse in={expandedSection === "columns"}>
-              <Box sx={{ mt: 1 }}>
-                <Button startIcon={<AddIcon />} onClick={addColumn} size="small" fullWidth variant="outlined" sx={{ mb: 1 }}>Add Column</Button>
-                <List dense>
-                  {template.reportData.columns.map((col: any, index: number) => (
-                    <Box key={index}>
-                      <ListItem sx={{ bgcolor: "background.paper", borderRadius: 1, mb: 1, display: "flex", flexDirection: "column", alignItems: "stretch" }}>
-                        <Box sx={{ display: "flex", width: "100%", alignItems: "center" }}>
-                          <Box sx={{ display: "flex", flexDirection: "column", mr: 1 }}>
-                            <IconButton size="small" onClick={() => moveColumn(index, 'up')} disabled={index === 0}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                            <IconButton size="small" onClick={() => moveColumn(index, 'down')} disabled={index === template.reportData.columns.length - 1}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                          </Box>
-                          <ListItemText primary={col.name} secondary={`ID: ${col.id}`} sx={{ flex: 1 }} />
-                          <IconButton size="small" onClick={() => setExpandedColumn(expandedColumn === index ? null : index)}>{expandedColumn === index ? <ExpandLessIcon /> : <ExpandMoreIcon />}</IconButton>
-                          <IconButton size="small" onClick={() => deleteColumn(index)}><DeleteIcon fontSize="small" /></IconButton>
-                        </Box>
-                        <Collapse in={expandedColumn === index}>
-                          <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                            <TextField label="Column Name" size="small" fullWidth value={col.name} onChange={(e) => updateColumn(index, "name", e.target.value)} />
-                            <TextField label="Column ID" size="small" fullWidth value={col.id} onChange={(e) => updateColumn(index, "id", e.target.value)} />
-                            <TextField label="Format Type" size="small" fullWidth value={col.format?.type || "TEXT"} onChange={(e) => updateColumn(index, "format.type", e.target.value)} />
-                          </Box>
-                        </Collapse>
-                      </ListItem>
+    <Paper
+      elevation={0}
+      sx={{
+        width: 320,
+        borderRight: "1px solid #e0e0e0",
+        overflow: "auto",
+        bgcolor: "#fafafa",
+      }}
+    >
+      <Box sx={{ p: 2 }}>
+        <Typography
+          variant="subtitle2"
+          fontWeight={600}
+          gutterBottom
+          sx={{ color: "text.secondary" }}
+        >
+          REPORT STRUCTURE
+        </Typography>
+
+        <Accordion
+          expanded={expanded === "metadata"}
+          onChange={() =>
+            setExpanded(expanded === "metadata" ? "" : "metadata")
+          }
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="body2" fontWeight={500}>
+              Metadata
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <TextField
+                label="Report Name"
+                size="small"
+                value={template.reportMeta.reportName}
+                onChange={(e) =>
+                  updateMetadata("reportMeta.reportName", e.target.value)
+                }
+                fullWidth
+              />
+              <TextField
+                label="Template ID"
+                size="small"
+                value={template.templateMeta.templateId}
+                onChange={(e) =>
+                  updateMetadata("templateMeta.templateId", e.target.value)
+                }
+                fullWidth
+              />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={template.templateMeta.pageSize}
+                  onChange={(e) =>
+                    updateMetadata("templateMeta.pageSize", e.target.value)
+                  }
+                  label="Page Size"
+                >
+                  <MenuItem value="A4">A4</MenuItem>
+                  <MenuItem value="LETTER">Letter</MenuItem>
+                  <MenuItem value="LEGAL">Legal</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Orientation</InputLabel>
+                <Select
+                  value={template.templateMeta.pageOrientation}
+                  onChange={(e) =>
+                    updateMetadata(
+                      "templateMeta.pageOrientation",
+                      e.target.value
+                    )
+                  }
+                  label="Orientation"
+                >
+                  <MenuItem value="portrait">Portrait</MenuItem>
+                  <MenuItem value="landscape">Landscape</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+
+        <Accordion
+          expanded={expanded === "columns"}
+          onChange={() => setExpanded(expanded === "columns" ? "" : "columns")}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <ViewColumnIcon sx={{ mr: 1, fontSize: 20 }} />
+            <Typography variant="body2" fontWeight={500}>
+              Columns ({template.reportData.columns.length})
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={addColumn}
+                fullWidth
+              >
+                Add Column
+              </Button>
+              <List dense sx={{ bgcolor: "background.paper", borderRadius: 1 }}>
+                {template.reportData.columns.map((col: any, index: number) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      mb: 1,
+                      p: 1,
+                      bgcolor: "background.paper",
+                      borderRadius: 1,
+                      border: "1px solid #e0e0e0",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        mb: 1,
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        fontWeight={600}
+                        color="primary"
+                      >
+                        {col.id}
+                      </Typography>
+                      <Box>
+                        <IconButton
+                          size="small"
+                          onClick={() =>
+                            setEditingColumn(
+                              editingColumn === index ? null : index
+                            )
+                          }
+                        >
+                          <ExpandMoreIcon
+                            fontSize="small"
+                            sx={{
+                              transform:
+                                editingColumn === index
+                                  ? "rotate(180deg)"
+                                  : "none",
+                            }}
+                          />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => removeColumn(col.id, index)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </Box>
-                  ))}
-                </List>
+
+                    {editingColumn === index && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 1.5,
+                        }}
+                      >
+                        <TextField
+                          label="Column Name"
+                          size="small"
+                          value={col.name || ""}
+                          onChange={(e) =>
+                            updateColumn(index, "name", e.target.value)
+                          }
+                          fullWidth
+                        />
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Format Type</InputLabel>
+                          <Select
+                            value={col.format?.type || "none"}
+                            onChange={(e) =>
+                              updateColumn(index, "format.type", e.target.value)
+                            }
+                            label="Format Type"
+                          >
+                            <MenuItem value="none">None</MenuItem>
+                            <MenuItem value="currency">Currency</MenuItem>
+                            <MenuItem value="number">Number</MenuItem>
+                            <MenuItem value="date">Date</MenuItem>
+                          </Select>
+                        </FormControl>
+
+                        {col.format?.type === "currency" && (
+                          <>
+                            <TextField
+                              label="Currency Symbol"
+                              size="small"
+                              value={col.format?.currencySymbol || ""}
+                              onChange={(e) =>
+                                updateColumn(
+                                  index,
+                                  "format.currencySymbol",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="$"
+                              fullWidth
+                            />
+                            <TextField
+                              label="Decimals"
+                              type="number"
+                              size="small"
+                              value={col.format?.decimals || 2}
+                              onChange={(e) =>
+                                updateColumn(
+                                  index,
+                                  "format.decimals",
+                                  parseInt(e.target.value)
+                                )
+                              }
+                              fullWidth
+                            />
+                          </>
+                        )}
+
+                        {col.format?.type === "number" && (
+                          <>
+                            <TextField
+                              label="Decimals"
+                              type="number"
+                              size="small"
+                              value={col.format?.decimals || 0}
+                              onChange={(e) =>
+                                updateColumn(
+                                  index,
+                                  "format.decimals",
+                                  parseInt(e.target.value)
+                                )
+                              }
+                              fullWidth
+                            />
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Thousand Separator</InputLabel>
+                              <Select
+                                value={col.format?.thousandSeparator || false}
+                                onChange={(e) =>
+                                  updateColumn(
+                                    index,
+                                    "format.thousandSeparator",
+                                    e.target.value === "true"
+                                  )
+                                }
+                                label="Thousand Separator"
+                              >
+                                <MenuItem value="true">Yes</MenuItem>
+                                <MenuItem value="false">No</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </>
+                        )}
+
+                        {col.format?.type === "date" && (
+                          <TextField
+                            label="Date Format"
+                            size="small"
+                            value={col.format?.outputFormat || ""}
+                            onChange={(e) =>
+                              updateColumn(
+                                index,
+                                "format.outputFormat",
+                                e.target.value
+                              )
+                            }
+                            placeholder="dd-MMM-yyyy"
+                            fullWidth
+                          />
+                        )}
+
+                        <TextField
+                          label="Width (px)"
+                          type="number"
+                          size="small"
+                          value={col.width || 150}
+                          onChange={(e) =>
+                            updateColumn(
+                              index,
+                              "width",
+                              parseInt(e.target.value) || 150
+                            )
+                          }
+                          fullWidth
+                        />
+                      </Box>
+                    )}
+                  </Box>
+                ))}
+              </List>
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+
+        <Accordion
+          expanded={expanded === "rows"}
+          onChange={() => setExpanded(expanded === "rows" ? "" : "rows")}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <ViewAgendaIcon sx={{ mr: 1, fontSize: 20 }} />
+            <Typography variant="body2" fontWeight={500}>
+              Rows ({template.reportData.rows.length})
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 0.5,
+                }}
+              >
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => addRow("HEADER")}
+                >
+                  Header
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => addRow("DATA")}
+                >
+                  Data
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => addRow("SEPARATOR")}
+                >
+                  Separator
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => addRow("DYNAMIC")}
+                >
+                  Dynamic
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => addRow("FOOTER")}
+                  sx={{ gridColumn: "span 2" }}
+                >
+                  Footer
+                </Button>
               </Box>
-            </Collapse>
-          </Box>
-          <Divider sx={{ my: 2 }} />
-          <Box>
-            <Button fullWidth onClick={() => toggleSection("rows")} endIcon={expandedSection === "rows" ? <ExpandLessIcon /> : <ExpandMoreIcon />} sx={{ justifyContent: "space-between", textTransform: "none", fontWeight: 600 }}>Rows ({template.reportData.rows.length})</Button>
-            <Collapse in={expandedSection === "rows"}>
-              <Box sx={{ mt: 1 }}>
-                <Box sx={{ display: "flex", gap: 0.5, mb: 1, flexWrap: "wrap" }}>
-                  <Button onClick={() => addRow("HEADER")} size="small" variant="outlined">Header</Button>
-                  <Button onClick={() => addRow("DATA")} size="small" variant="outlined">Data</Button>
-                  <Button onClick={() => addRow("SEPARATOR")} size="small" variant="outlined">Separator</Button>
-                  <Button onClick={() => addRow("DYNAMIC")} size="small" variant="outlined">Dynamic</Button>
-                  <Button onClick={() => addRow("FOOTER")} size="small" variant="outlined">Footer</Button>
-                </Box>
-                <List dense>
-                  {template.reportData.rows.map((row: any, index: number) => (
-                    <Box key={index}>
-                      <ListItem sx={{ bgcolor: "background.paper", borderRadius: 1, mb: 1, p: 1 }}>
-                        <Box sx={{ display: "flex", flexDirection: "column", mr: 1 }}>
-                          <IconButton size="small" onClick={() => moveRow(index, 'up')} disabled={index === 0}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => moveRow(index, 'down')} disabled={index === template.reportData.rows.length - 1}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                        </Box>
-                        <ListItemText primary={`${row.rowType} (${row.id})`} secondary={row.rowType === "DYNAMIC" ? `Table: ${row.dynamicConfig?.table || "..."}` : `${row.cells?.length || 0} cells`} />
-                        <Button size="small" onClick={() => addRow("DATA", index)} sx={{ mr: 1 }}><AddIcon fontSize="small" /></Button>
-                        <IconButton size="small" onClick={() => deleteRow(index)}><DeleteIcon fontSize="small" /></IconButton>
-                      </ListItem>
-                    </Box>
-                  ))}
-                </List>
-              </Box>
-            </Collapse>
-          </Box>
-        </Box>
-      </Paper>
-      <Dialog open={deleteDialog !== null} onClose={() => setDeleteDialog(null)}>
-        <DialogTitle>Warning: Dependencies Found</DialogTitle>
+              <List
+                dense
+                sx={{ bgcolor: "background.paper", borderRadius: 1, mt: 1 }}
+              >
+                {template.reportData.rows.map((row: any, index: number) => (
+                  <ListItem
+                    key={index}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => removeRow(row.id, index)}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemText
+                      primary={row.id}
+                      secondary={row.rowType}
+                      primaryTypographyProps={{ variant: "body2" }}
+                      secondaryTypographyProps={{
+                        variant: "caption",
+                        color: "primary",
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+      </Box>
+
+      <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
+        <DialogTitle>Warning: References Found</DialogTitle>
         <DialogContent>
-          <DialogContentText>This {deleteDialog?.type} is referenced in formula cells:</DialogContentText>
-          <List dense>{deleteDialog?.dependencies.map((dep, idx) => (<ListItem key={idx}><ListItemText primary={dep} /></ListItem>))}</List>
-          <DialogContentText sx={{ mt: 2 }}>If you proceed, these references will be removed from the formulas. Do you want to continue?</DialogContentText>
+          <DialogContentText>
+            This {deleteDialog?.type} is referenced in the following formulas:
+          </DialogContentText>
+          <List dense>
+            {deleteDialog?.references.map((ref, idx) => (
+              <ListItem key={idx}>
+                <ListItemText primary={ref} />
+              </ListItem>
+            ))}
+          </List>
+          <DialogContentText sx={{ mt: 2 }}>
+            Deleting will remove these references from the formulas. Do you want
+            to continue?
+          </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialog(null)}>Cancel</Button>
-          <Button onClick={() => { if (deleteDialog?.type === 'column') { performColumnDelete(deleteDialog.index); } else { performRowDelete(deleteDialog.index); } }} color="error">Delete Anyway</Button>
+          <Button
+            onClick={() => {
+              if (deleteDialog?.type === "column") {
+                confirmRemoveColumn(deleteDialog.colId, deleteDialog.index);
+              } else {
+                confirmRemoveRow(deleteDialog.rowId, deleteDialog.index);
+              }
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete Anyway
+          </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </Paper>
   );
 };

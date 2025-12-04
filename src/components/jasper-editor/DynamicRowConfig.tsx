@@ -7,6 +7,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Chip from "@mui/material/Chip";
 import OutlinedInput from "@mui/material/OutlinedInput";
+import { FilterBuilder } from "./FilterBuilder";
 
 interface DynamicRowConfigProps {
   dynamicConfig: any;
@@ -72,22 +73,9 @@ export const DynamicRowConfig = ({
         </Select>
       </FormControl>
 
-      <TextField
-        label="Filters (JSON)"
-        size="small"
-        multiline
-        rows={4}
-        value={JSON.stringify(dynamicConfig.filters || {}, null, 2)}
-        onChange={(e) => {
-          try {
-            updateConfig("filters", JSON.parse(e.target.value));
-          } catch {
-            // Invalid JSON, don't update
-          }
-        }}
-        placeholder='{"BRANCH_CODE": "10089", "BALANCE": {">": 500}}'
-        fullWidth
-        sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+      <FilterBuilder
+        filters={dynamicConfig.filters || {}}
+        onFiltersChange={(filters) => updateConfig("filters", filters)}
       />
 
       <TextField

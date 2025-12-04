@@ -12,6 +12,7 @@ import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
 import { FormulaBuilder } from "./FormulaBuilder";
 import { DynamicRowConfig } from "./DynamicRowConfig";
+import { FilterBuilder } from "./FilterBuilder";
 
 interface RightPanelProps {
   template: any;
@@ -26,7 +27,7 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
     if (!selectedCell) return;
     
     const newTemplate = { ...template };
-    const row = newTemplate.rows[selectedCell.rowIndex];
+    const row = newTemplate.reportData.rows[selectedCell.rowIndex];
     const cell = row.cells[selectedCell.cellIndex];
     
     if (field.includes(".")) {
@@ -70,7 +71,7 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
     );
   }
 
-  const row = template.rows[selectedCell.rowIndex];
+  const row = template.reportData.rows[selectedCell.rowIndex];
   const cell = row?.cells?.[selectedCell.cellIndex];
   
   // Handle dynamic row configuration (cellIndex -1 means the dynamic row itself was selected)
@@ -101,7 +102,7 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
             dynamicConfig={row.dynamicConfig || {}}
             onConfigChange={(config) => {
               const newTemplate = { ...template };
-              newTemplate.rows[selectedCell.rowIndex].dynamicConfig = config;
+              newTemplate.reportData.rows[selectedCell.rowIndex].dynamicConfig = config;
               onTemplateChange(newTemplate);
             }}
           />
@@ -197,19 +198,9 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
                 placeholder="e.g., BALANCE"
                 fullWidth
               />
-              <TextField
-                label="Filters (JSON)"
-                size="small"
-                multiline
-                rows={3}
-                value={JSON.stringify(cell.source?.filters || {}, null, 2)}
-                onChange={(e) => {
-                  try {
-                    updateCell("source.filters", JSON.parse(e.target.value));
-                  } catch {}
-                }}
-                fullWidth
-                sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+              <FilterBuilder
+                filters={cell.source?.filters || {}}
+                onFiltersChange={(filters) => updateCell("source.filters", filters)}
               />
             </>
           )}
@@ -250,7 +241,7 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
             size="small"
             value={cell.render?.colspan || 1}
             onChange={(e) => updateCell("render.colspan", parseInt(e.target.value) || 1)}
-            InputProps={{ inputProps: { min: 1, max: template.columns.length } }}
+            InputProps={{ inputProps: { min: 1, max: template.reportData.columns.length } }}
             fullWidth
           />
 

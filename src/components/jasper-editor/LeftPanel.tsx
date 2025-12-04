@@ -27,6 +27,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ViewAgendaIcon from "@mui/icons-material/ViewAgenda";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import { AddRowDialog } from "./AddRowDialog";
 
 interface LeftPanelProps {
   template: any;
@@ -46,6 +47,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [insertMenuAnchor, setInsertMenuAnchor] = useState<null | HTMLElement>(null);
   const [insertAtIndex, setInsertAtIndex] = useState<number>(0);
+  const [addRowDialog, setAddRowDialog] = useState<{ open: boolean; rowType: string; insertAt?: number }>({ open: false, rowType: "" });
 
   const updateMetadata = (field: string, value: any) => {
     const newTemplate = { ...template };
@@ -175,17 +177,24 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     setDeleteDialog(null);
   };
 
-  const addRow = (type: string, insertAt?: number) => {
+  const openAddRowDialog = (type: string, insertAt?: number) => {
+    setAddRowDialog({ open: true, rowType: type, insertAt });
+    setInsertMenuAnchor(null);
+  };
+
+  const addRow = (rowId: string) => {
+    const { rowType, insertAt } = addRowDialog;
+    
     const newRow: any = {
-      rowType: type,
-      id: `R_${Date.now()}`,
+      rowType,
+      id: rowId,
       cells: template.reportData.columns.map(() => ({
         type: "TEXT",
         value: "",
       })),
     };
 
-    if (type === "DYNAMIC") {
+    if (rowType === "DYNAMIC") {
       newRow.dynamicConfig = {
         type: "DB_LIST",
         table: "",
@@ -205,8 +214,10 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
       ...template,
       reportData: { ...template.reportData, rows: newRows },
     });
-    setInsertMenuAnchor(null);
+    setAddRowDialog({ open: false, rowType: "" });
   };
+
+  const existingRowIds = template.reportData.rows.map((r: any) => r.id);
 
   // Drag and drop handlers
   const handleDragStart = (index: number) => {
@@ -618,35 +629,35 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => addRow("HEADER")}
+                  onClick={() => openAddRowDialog("HEADER")}
                 >
                   Header
                 </Button>
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => addRow("DATA")}
+                  onClick={() => openAddRowDialog("DATA")}
                 >
                   Data
                 </Button>
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => addRow("SEPARATOR")}
+                  onClick={() => openAddRowDialog("SEPARATOR")}
                 >
                   Separator
                 </Button>
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => addRow("DYNAMIC")}
+                  onClick={() => openAddRowDialog("DYNAMIC")}
                 >
                   Dynamic
                 </Button>
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => addRow("FOOTER")}
+                  onClick={() => openAddRowDialog("FOOTER")}
                   sx={{ gridColumn: "span 2" }}
                 >
                   Footer
@@ -754,12 +765,20 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
           open={Boolean(insertMenuAnchor)}
           onClose={() => setInsertMenuAnchor(null)}
         >
-          <MenuItem onClick={() => addRow("HEADER", insertAtIndex)}>Header</MenuItem>
-          <MenuItem onClick={() => addRow("DATA", insertAtIndex)}>Data</MenuItem>
-          <MenuItem onClick={() => addRow("SEPARATOR", insertAtIndex)}>Separator</MenuItem>
-          <MenuItem onClick={() => addRow("DYNAMIC", insertAtIndex)}>Dynamic</MenuItem>
-          <MenuItem onClick={() => addRow("FOOTER", insertAtIndex)}>Footer</MenuItem>
+          <MenuItem onClick={() => openAddRowDialog("HEADER", insertAtIndex)}>Header</MenuItem>
+          <MenuItem onClick={() => openAddRowDialog("DATA", insertAtIndex)}>Data</MenuItem>
+          <MenuItem onClick={() => openAddRowDialog("SEPARATOR", insertAtIndex)}>Separator</MenuItem>
+          <MenuItem onClick={() => openAddRowDialog("DYNAMIC", insertAtIndex)}>Dynamic</MenuItem>
+          <MenuItem onClick={() => openAddRowDialog("FOOTER", insertAtIndex)}>Footer</MenuItem>
         </Menu>
+
+        <AddRowDialog
+          open={addRowDialog.open}
+          rowType={addRowDialog.rowType}
+          existingRowIds={existingRowIds}
+          onClose={() => setAddRowDialog({ open: false, rowType: "" })}
+          onConfirm={addRow}
+        />
       </Box>
 
       <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>

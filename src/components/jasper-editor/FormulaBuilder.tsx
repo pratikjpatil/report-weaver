@@ -13,7 +13,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
-import Alert from "@mui/material/Alert";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 
@@ -27,67 +26,66 @@ interface FormulaBuilderProps {
   onFormulaModeChange: (mode: boolean) => void;
 }
 
-export const FormulaBuilder = ({ expression, variables, template, onExpressionChange, onVariablesChange, formulaMode, onFormulaModeChange }: FormulaBuilderProps) => {
+export const FormulaBuilder = ({
+  expression,
+  variables,
+  template,
+  onExpressionChange,
+  onVariablesChange,
+  formulaMode,
+  onFormulaModeChange,
+}: FormulaBuilderProps) => {
   const [showVariableDialog, setShowVariableDialog] = useState(false);
   const [newVarName, setNewVarName] = useState("");
   const [newVarType, setNewVarType] = useState("CELL_REF");
   const [newVarConfig, setNewVarConfig] = useState<any>({});
-  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleCellSelected = (event: any) => {
       const cellRef = event.detail;
       onExpressionChange(expression + (expression ? ' ' : '') + cellRef);
     };
+
     window.addEventListener('formula-cell-selected', handleCellSelected);
     return () => window.removeEventListener('formula-cell-selected', handleCellSelected);
   }, [expression, onExpressionChange]);
 
-  useEffect(() => {
-    if (!expression || expression.trim() === "") {
-      setValidationError("Expression cannot be empty");
-      return;
-    }
-    let balance = 0;
-    for (const char of expression) {
-      if (char === '(') balance++;
-      if (char === ')') balance--;
-      if (balance < 0) { setValidationError("Unbalanced parentheses"); return; }
-    }
-    if (balance !== 0) { setValidationError("Unbalanced parentheses"); return; }
-    
-    const operators = ['+', '-', '*', '/'];
-    const tokens = expression.split(/\s+/).filter(t => t.length > 0);
-    for (let i = 0; i < tokens.length - 1; i++) {
-      if (operators.includes(tokens[i]) && operators.includes(tokens[i + 1])) {
-        setValidationError("Consecutive operators not allowed"); return;
-      }
-    }
-    if (operators.includes(tokens[tokens.length - 1])) {
-      setValidationError("Expression cannot end with operator"); return;
-    }
-    setValidationError(null);
-  }, [expression]);
+  const addOperator = (op: string) => {
+    onExpressionChange(expression + ` ${op} `);
+  };
 
-  const addOperator = (op: string) => onExpressionChange(expression + ` ${op} `);
-  const toggleFormulaMode = () => onFormulaModeChange(!formulaMode);
-  const addVariable = () => setShowVariableDialog(true);
-  
+  const toggleFormulaMode = () => {
+    onFormulaModeChange(!formulaMode);
+  };
+
+  const addVariable = () => {
+    setShowVariableDialog(true);
+  };
+
   const saveVariable = () => {
-    if (!newVarName || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newVarName)) {
-      alert("Invalid variable name"); return;
-    }
+    if (!newVarName) return;
+    
     const newVariables = { ...variables };
+    
     if (newVarType === "CELL_REF") {
+      // Variables for cell references are just placeholders
       newVariables[newVarName] = "CELL_REF";
     } else {
-      if (!newVarConfig.table || !newVarConfig.column) { alert("Table and column required"); return; }
-      newVariables[newVarName] = { type: newVarType, table: newVarConfig.table, column: newVarConfig.column, filters: newVarConfig.filters || {} };
+      // DB variables
+      newVariables[newVarName] = {
+        type: newVarType,
+        table: newVarConfig.table || "",
+        column: newVarConfig.column || "",
+        filters: newVarConfig.filters || {},
+      };
     }
+    
     onVariablesChange(newVariables);
     onExpressionChange(expression + ` ${newVarName}`);
     setShowVariableDialog(false);
-    setNewVarName(""); setNewVarType("CELL_REF"); setNewVarConfig({});
+    setNewVarName("");
+    setNewVarType("CELL_REF");
+    setNewVarConfig({});
   };
 
   const removeVariable = (varName: string) => {
@@ -99,46 +97,122 @@ export const FormulaBuilder = ({ expression, variables, template, onExpressionCh
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Box>
-        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>EXPRESSION</Typography>
-        <TextField value={expression} onChange={(e) => onExpressionChange(e.target.value)} placeholder="e.g., R:row_1~C:col_1 + variable1" size="small" fullWidth multiline rows={2} sx={{ fontFamily: "monospace" }} error={!!validationError} />
-        {validationError && <Alert severity="error" sx={{ mt: 1 }}>{validationError}</Alert>}
-        {!validationError && expression && <Alert severity="success" sx={{ mt: 1 }}>Expression is valid</Alert>}
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>
+          EXPRESSION
+        </Typography>
+        <TextField
+          value={expression}
+          onChange={(e) => onExpressionChange(e.target.value)}
+          placeholder="e.g., R1C1 + variable1"
+          size="small"
+          fullWidth
+          multiline
+          rows={2}
+          sx={{ fontFamily: "monospace" }}
+        />
       </Box>
+
       <Box>
-        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>OPERATORS</Typography>
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>
+          OPERATORS
+        </Typography>
         <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-          {["+", "-", "*", "/", "(", ")"].map((op) => (<Button key={op} variant="outlined" size="small" onClick={() => addOperator(op)} sx={{ minWidth: 40 }}>{op}</Button>))}
+          {["+", "-", "*", "/", "(", ")"].map((op) => (
+            <Button
+              key={op}
+              variant="outlined"
+              size="small"
+              onClick={() => addOperator(op)}
+              sx={{ minWidth: 40 }}
+            >
+              {op}
+            </Button>
+          ))}
         </Box>
       </Box>
+
       <Box>
-        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>INSERT</Typography>
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>
+          INSERT
+        </Typography>
         <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-          <Button variant={formulaMode ? "contained" : "outlined"} size="small" onClick={toggleFormulaMode} sx={{ bgcolor: formulaMode ? "#ff9800" : undefined, color: formulaMode ? "white" : undefined, "&:hover": { bgcolor: formulaMode ? "#f57c00" : undefined } }}>{formulaMode ? "Click cells to add (Active)" : "Select Cell from Canvas"}</Button>
-          <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={addVariable}>Variable</Button>
+          <Button
+            variant={formulaMode ? "contained" : "outlined"}
+            size="small"
+            onClick={toggleFormulaMode}
+            sx={{ 
+              bgcolor: formulaMode ? "#ff9800" : undefined,
+              color: formulaMode ? "white" : undefined,
+              "&:hover": {
+                bgcolor: formulaMode ? "#f57c00" : undefined,
+              }
+            }}
+          >
+            {formulaMode ? "Click cells to add (Active)" : "Select Cell from Canvas"}
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={addVariable}
+          >
+            Variable
+          </Button>
         </Box>
       </Box>
+
       <Box>
-        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>VARIABLES ({Object.keys(variables || {}).length})</Typography>
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 1, display: "block" }}>
+          VARIABLES ({Object.keys(variables || {}).length})
+        </Typography>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {Object.entries(variables || {}).map(([name, config]: [string, any]) => (
-            <Box key={name} sx={{ p: 1, bgcolor: "background.paper", border: "1px solid #e0e0e0", borderRadius: 1, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Box
+              key={name}
+              sx={{
+                p: 1,
+                bgcolor: "background.paper",
+                border: "1px solid #e0e0e0",
+                borderRadius: 1,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
               <Box>
                 <Chip label={name} size="small" color="primary" sx={{ mb: 0.5 }} />
-                <Typography variant="caption" display="block" color="text.secondary">{config === "CELL_REF" ? "Cell Reference" : `${config.type} from ${config.table}.${config.column}`}</Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  {config === "CELL_REF" ? "Cell Reference" : `${config.type} from ${config.table}.${config.column}`}
+                </Typography>
               </Box>
-              <IconButton size="small" onClick={() => removeVariable(name)}><DeleteIcon fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={() => removeVariable(name)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
             </Box>
           ))}
         </Box>
       </Box>
+
       <Dialog open={showVariableDialog} onClose={() => setShowVariableDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Variable</DialogTitle>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-            <TextField label="Variable Name" value={newVarName} onChange={(e) => setNewVarName(e.target.value)} placeholder="e.g., maxBalance" size="small" fullWidth />
+            <TextField
+              label="Variable Name"
+              value={newVarName}
+              onChange={(e) => setNewVarName(e.target.value)}
+              placeholder="e.g., maxBalance"
+              size="small"
+              fullWidth
+            />
+            
             <FormControl size="small" fullWidth>
               <InputLabel>Variable Type</InputLabel>
-              <Select value={newVarType} onChange={(e) => setNewVarType(e.target.value)} label="Variable Type">
+              <Select
+                value={newVarType}
+                onChange={(e) => setNewVarType(e.target.value)}
+                label="Variable Type"
+              >
                 <MenuItem value="CELL_REF">Cell Reference</MenuItem>
                 <MenuItem value="DB_VALUE">DB Value</MenuItem>
                 <MenuItem value="DB_SUM">DB Sum</MenuItem>
@@ -148,18 +222,49 @@ export const FormulaBuilder = ({ expression, variables, template, onExpressionCh
                 <MenuItem value="DB_MAX">DB Max</MenuItem>
               </Select>
             </FormControl>
+
             {newVarType !== "CELL_REF" && (
               <>
-                <TextField label="Table" value={newVarConfig.table || ""} onChange={(e) => setNewVarConfig({ ...newVarConfig, table: e.target.value })} placeholder="e.g., GL_BALANCE" size="small" fullWidth />
-                <TextField label="Column" value={newVarConfig.column || ""} onChange={(e) => setNewVarConfig({ ...newVarConfig, column: e.target.value })} placeholder="e.g., BALANCE" size="small" fullWidth />
-                <TextField label="Filters (JSON)" value={JSON.stringify(newVarConfig.filters || {}, null, 2)} onChange={(e) => { try { setNewVarConfig({ ...newVarConfig, filters: JSON.parse(e.target.value) }); } catch {} }} placeholder='{"BRANCH_CODE": "10089"}' size="small" multiline rows={3} fullWidth sx={{ fontFamily: "monospace", fontSize: "0.85rem" }} />
+                <TextField
+                  label="Table"
+                  value={newVarConfig.table || ""}
+                  onChange={(e) => setNewVarConfig({ ...newVarConfig, table: e.target.value })}
+                  placeholder="e.g., GL_BALANCE"
+                  size="small"
+                  fullWidth
+                />
+                <TextField
+                  label="Column"
+                  value={newVarConfig.column || ""}
+                  onChange={(e) => setNewVarConfig({ ...newVarConfig, column: e.target.value })}
+                  placeholder="e.g., BALANCE"
+                  size="small"
+                  fullWidth
+                />
+                <TextField
+                  label="Filters (JSON)"
+                  value={JSON.stringify(newVarConfig.filters || {}, null, 2)}
+                  onChange={(e) => {
+                    try {
+                      setNewVarConfig({ ...newVarConfig, filters: JSON.parse(e.target.value) });
+                    } catch {}
+                  }}
+                  placeholder='{"BRANCH_CODE": "10089"}'
+                  size="small"
+                  multiline
+                  rows={3}
+                  fullWidth
+                  sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                />
               </>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowVariableDialog(false)}>Cancel</Button>
-          <Button onClick={saveVariable} variant="contained" disabled={!newVarName}>Add Variable</Button>
+          <Button onClick={saveVariable} variant="contained" disabled={!newVarName}>
+            Add Variable
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

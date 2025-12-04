@@ -8,97 +8,324 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
-import Alert from "@mui/material/Alert";
 
 interface ReportCanvasProps {
   template: any;
+  onTemplateChange: (template: any) => void;
   selectedCell: { rowIndex: number; cellIndex: number } | null;
-  onCellSelect: (rowIndex: number, cellIndex: number) => void;
+  onCellSelect: (cell: { rowIndex: number; cellIndex: number } | null) => void;
   formulaMode: boolean;
 }
 
-export const ReportCanvas = ({ template, selectedCell, onCellSelect, formulaMode }: ReportCanvasProps) => {
-  const handleCellClick = (rowIndex: number, cellIndex: number) => {
+export const ReportCanvas = ({
+  template,
+  onTemplateChange,
+  selectedCell,
+  onCellSelect,
+  formulaMode,
+}: ReportCanvasProps) => {
+  const handleCellClick = (
+    rowIndex: number,
+    cellIndex: number,
+    rowId: string,
+    colId: string,
+    event: React.MouseEvent
+  ) => {
     if (formulaMode) {
-      const row = template.reportData.rows[rowIndex];
-      if (row.rowType !== "DYNAMIC" && row.cells && row.cells[cellIndex]) {
-        window.dispatchEvent(new CustomEvent('formula-cell-selected', { detail: row.cells[cellIndex].id }));
-      }
+      // In formula mode, emit a custom event with cell reference
+      // const cellRef = `R${rowIndex + 1}C${cellIndex + 1}`;
+      const cellRef = `cell_${rowId}_${colId}`;
+      window.dispatchEvent(
+        new CustomEvent("formula-cell-selected", { detail: cellRef })
+      );
+      event.stopPropagation();
     } else {
-      onCellSelect(rowIndex, cellIndex);
+      onCellSelect({ rowIndex, cellIndex });
     }
   };
 
   const getCellValue = (cell: any) => {
-    if (!cell) return "";
-    switch (cell.type) {
-      case "TEXT": return cell.value || "";
-      case "FORMULA": return `= ${cell.expression || ""}`;
-      case "DB_VALUE":
-      case "DB_COUNT":
-      case "DB_SUM":
-      case "DB_AVG":
-      case "DB_MIN":
-      case "DB_MAX":
-        return `${cell.type}(${cell.source?.table}.${cell.source?.column})`;
-      default: return cell.value || "";
-    }
+    if (cell.type === "TEXT") return cell.value || "Click to edit";
+    if (cell.type === "FORMULA") return `= ${cell.expression || "formula"}`;
+    if (cell.type?.startsWith("DB_"))
+      return `${cell.type} (${cell.source?.column || "?"})`;
+    return "Empty cell";
+  };
+
+  const getRowTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      HEADER: "#1976d2",
+      DATA: "#2c8aa8",
+      SEPARATOR: "#757575",
+      DYNAMIC: "#388e3c",
+      FOOTER: "#f57c00",
+    };
+    return colors[type] || "#757575";
   };
 
   return (
-    <Box sx={{ flex: 1, overflow: "auto", p: 3, bgcolor: formulaMode ? "#fff3e0" : "background.default", transition: "background-color 0.3s" }}>
-      {formulaMode && <Alert severity="info" sx={{ mb: 2 }}>Formula Mode Active: Click on cells to add them to your formula expression</Alert>}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h5" gutterBottom>{template.reportMeta.reportName}</Typography>
-        <Typography variant="caption" color="text.secondary">Report ID: {template.reportMeta.reportId} | Template: {template.templateMeta.templateId}</Typography>
-      </Paper>
-      <TableContainer component={Paper} elevation={3}>
-        <Table sx={{ minWidth: 650 }} size="small">
-          <TableHead>
-            <TableRow sx={{ bgcolor: "primary.main" }}>
-              {template.reportData.columns.map((col: any, colIndex: number) => (
-                <TableCell key={colIndex} sx={{ color: "primary.contrastText", fontWeight: "bold", minWidth: 150 }}>
-                  {col.name}
-                  <Typography variant="caption" display="block" sx={{ opacity: 0.8 }}>{col.id}</Typography>
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {template.reportData.rows.length === 0 ? (
-              <TableRow><TableCell colSpan={template.reportData.columns.length} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No rows defined. Add rows from the left panel.</Typography></TableCell></TableRow>
-            ) : (
-              template.reportData.rows.map((row: any, rowIndex: number) => {
-                if (row.rowType === "DYNAMIC") {
-                  return (
-                    <TableRow key={rowIndex} onClick={() => onCellSelect(rowIndex, -1)} sx={{ bgcolor: selectedCell?.rowIndex === rowIndex ? "action.selected" : "warning.light", cursor: "pointer", "&:hover": { bgcolor: "warning.main" } }}>
-                      <TableCell colSpan={template.reportData.columns.length}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <Chip label="DYNAMIC ROW" size="small" color="warning" />
-                          <Typography variant="body2">Table: {row.dynamicConfig?.table || "Not configured"}{row.dynamicConfig?.limit && ` (Limit: ${row.dynamicConfig.limit})`}</Typography>
-                        </Box>
+    <Box
+      sx={{
+        flex: 1,
+        bgcolor: formulaMode ? "#fff3e0" : "#f5f7fa",
+        p: 3,
+        overflow: "auto",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        cursor: formulaMode ? "crosshair" : "default",
+        transition: "background-color 0.3s ease",
+      }}
+    >
+      <Paper
+        elevation={3}
+        sx={{
+          width: "100%",
+          // maxWidth: 1200,
+          // minHeight: "calc(100vh - 150px)",
+          bgcolor: "white",
+          p: 4,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+        }}
+      >
+        {formulaMode && (
+          <Box
+            sx={{
+              mb: 2,
+              p: 2,
+              bgcolor: "#ff9800",
+              color: "white",
+              borderRadius: 1,
+              textAlign: "center",
+            }}
+          >
+            <Typography variant="body2" fontWeight={600}>
+              Formula Building Mode Active - Click any cell to add it to your
+              formula
+            </Typography>
+          </Box>
+        )}
+
+        <Box
+          sx={{
+            mb: 3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Typography
+            variant="h5"
+            fontWeight={600}
+            sx={{ textAlign: "center" }}
+          >
+            {template.reportMeta.reportName}
+          </Typography>
+
+          <Typography variant="caption" color="text.secondary">
+            {template.reportData.columns.length} columns ×{" "}
+            {template.reportData.rows.length} rows
+          </Typography>
+        </Box>
+
+        {template.reportData.columns.length === 0 ? (
+          <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
+            <Typography variant="body1" gutterBottom>
+              Add columns from the left panel to get started
+            </Typography>
+            <Typography variant="caption">
+              Define your report structure first
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table sx={{ border: "1px solid #e0e0e0" }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: "#f5f5f5" }}>
+                  <TableCell
+                    sx={{
+                      width: 60,
+                      fontWeight: 600,
+                      fontSize: "0.75rem",
+                      color: "text.secondary",
+                      borderRight: "1px solid #e0e0e0",
+                    }}
+                  >
+                    #
+                  </TableCell>
+                  {template.reportData.columns.map(
+                    (col: any, colIndex: number) => (
+                      <TableCell
+                        key={colIndex}
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: "0.875rem",
+                          width: col.width || 150,
+                          minWidth: col.width || 150,
+                        }}
+                      >
+                        {col.name}
+                        <Typography
+                          variant="caption"
+                          display="block"
+                          color="text.secondary"
+                        >
+                          {col.id} ({col.width || 150}px)
+                        </Typography>
                       </TableCell>
-                    </TableRow>
-                  );
-                }
-                return (
-                  <TableRow key={rowIndex} sx={{ bgcolor: row.rowType === "HEADER" ? "grey.100" : row.rowType === "FOOTER" ? "grey.100" : row.rowType === "SEPARATOR" ? "grey.200" : "background.paper" }}>
-                    {row.cells?.map((cell: any, cellIndex: number) => (
-                      <TableCell key={cellIndex} colSpan={cell.render?.colspan || 1} rowSpan={cell.render?.rowspan || 1} onClick={() => handleCellClick(rowIndex, cellIndex)} sx={{ cursor: formulaMode ? "crosshair" : "pointer", minWidth: 120, textAlign: cell.render?.align || "left", fontWeight: cell.render?.bold ? "bold" : "normal", border: selectedCell?.rowIndex === rowIndex && selectedCell?.cellIndex === cellIndex ? "2px solid #1976d2" : undefined, bgcolor: selectedCell?.rowIndex === rowIndex && selectedCell?.cellIndex === cellIndex ? "action.selected" : cell.render?.bgColor }}>
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: cell.render?.bold ? "bold" : "normal" }}>{getCellValue(cell)}</Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem" }}>{cell.id}</Typography>
-                          {(cell.render?.colspan > 1 || cell.render?.rowspan > 1) && <Chip label={`${cell.render?.colspan || 1}x${cell.render?.rowspan || 1}`} size="small" sx={{ ml: 1, height: 16, fontSize: "0.65rem" }} />}
-                        </Box>
+                    )
+                  )}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {template.reportData.rows.map((row: any, rowIndex: number) => (
+                  <TableRow
+                    key={rowIndex}
+                    sx={{
+                      "&:hover": { bgcolor: "#f9f9f9" },
+                      borderLeft: `3px solid ${getRowTypeColor(row.rowType)}`,
+                    }}
+                  >
+                    <TableCell
+                      sx={{
+                        bgcolor: "#fafafa",
+                        borderRight: "1px solid #e0e0e0",
+                        textAlign: "center",
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        color="text.secondary"
+                      >
+                        {row.id}
+                      </Typography>
+                      <Chip
+                        label={row.rowType}
+                        size="small"
+                        sx={{
+                          fontSize: "0.7rem",
+                          height: 20,
+                          bgcolor: getRowTypeColor(row.rowType),
+                          color: "white",
+                          fontWeight: 600,
+                        }}
+                      />
+                    </TableCell>
+
+                    {row.rowType === "DYNAMIC" ? (
+                      <TableCell
+                        colSpan={template.reportData.columns.length}
+                        onClick={() =>
+                          onCellSelect({ rowIndex, cellIndex: -1 })
+                        }
+                        sx={{
+                          bgcolor:
+                            selectedCell?.rowIndex === rowIndex
+                              ? "#c8e6c9"
+                              : "#e8f5e9",
+                          fontStyle: "italic",
+                          color: "text.secondary",
+                          cursor: "pointer",
+                          border:
+                            selectedCell?.rowIndex === rowIndex
+                              ? "2px solid #388e3c"
+                              : "1px solid #e0e0e0",
+                          "&:hover": {
+                            bgcolor: "#c8e6c9",
+                          },
+                        }}
+                      >
+                        🔄 Dynamic rows from{" "}
+                        {row.dynamicConfig?.table || "database"} - Click to
+                        configure
                       </TableCell>
-                    ))}
+                    ) : (
+                      row.cells?.map((cell: any, cellIndex: number) => {
+                        const isSelected =
+                          selectedCell?.rowIndex === rowIndex &&
+                          selectedCell?.cellIndex === cellIndex;
+
+                        return (
+                          <TableCell
+                            key={cellIndex}
+                            onClick={(e) =>
+                              handleCellClick(
+                                rowIndex,
+                                cellIndex,
+                                row.id,
+                                template.reportData.columns[cellIndex].id,
+                                e
+                              )
+                            }
+                            colSpan={cell.render?.colspan || 1}
+                            rowSpan={cell.render?.rowspan || 1}
+                            sx={{
+                              cursor: formulaMode ? "crosshair" : "pointer",
+                              position: "relative",
+                              bgcolor: isSelected
+                                ? "#e3f2fd"
+                                : formulaMode
+                                ? "#fff9c4"
+                                : "white",
+                              border: isSelected
+                                ? "2px solid #1976d2"
+                                : "1px solid #e0e0e0",
+                              fontWeight: cell.render?.bold ? 600 : 400,
+                              textAlign: cell.render?.align || "left",
+                              "&:hover": {
+                                bgcolor: isSelected
+                                  ? "#e3f2fd"
+                                  : formulaMode
+                                  ? "#fff59d"
+                                  : "#f5f5f5",
+                              },
+                              transition: "all 0.2s ease",
+                            }}
+                          >
+                            <Typography
+                              variant="body2"
+                              sx={{ fontSize: "0.875rem" }}
+                            >
+                              {getCellValue(cell)}
+                            </Typography>
+                            {cell.render?.colspan &&
+                              cell.render.colspan > 1 && (
+                                <Chip
+                                  label={`colspan: ${cell.render.colspan}`}
+                                  size="small"
+                                  sx={{
+                                    position: "absolute",
+                                    top: 4,
+                                    right: 4,
+                                    height: 18,
+                                    fontSize: "0.65rem",
+                                  }}
+                                />
+                              )}
+                          </TableCell>
+                        );
+                      })
+                    )}
                   </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {template.reportData.rows.length === 0 &&
+          template.reportData.columns.length > 0 && (
+            <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
+              <Typography variant="body1" gutterBottom>
+                Add rows from the left panel
+              </Typography>
+              <Typography variant="caption">
+                Start building your report structure
+              </Typography>
+            </Box>
+          )}
+      </Paper>
     </Box>
   );
 };

@@ -20,11 +20,13 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
+import Menu from "@mui/material/Menu";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ViewAgendaIcon from "@mui/icons-material/ViewAgenda";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 
 interface LeftPanelProps {
   template: any;
@@ -40,6 +42,10 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     colId: string;
     rowId: string;
   } | null>(null);
+  const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  const [insertMenuAnchor, setInsertMenuAnchor] = useState<null | HTMLElement>(null);
+  const [insertAtIndex, setInsertAtIndex] = useState<number>(0);
 
   const updateMetadata = (field: string, value: any) => {
     const newTemplate = { ...template };
@@ -169,10 +175,10 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     setDeleteDialog(null);
   };
 
-  const addRow = (type: string) => {
+  const addRow = (type: string, insertAt?: number) => {
     const newRow: any = {
       rowType: type,
-      id: `R_${template.reportData.rows.length + 1}`,
+      id: `R_${Date.now()}`,
       cells: template.reportData.columns.map(() => ({
         type: "TEXT",
         value: "",
@@ -189,11 +195,46 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
       newRow.cells = [];
     }
 
-    const newRows = [...template.reportData.rows, newRow];
+    const newRows = [...template.reportData.rows];
+    if (insertAt !== undefined) {
+      newRows.splice(insertAt, 0, newRow);
+    } else {
+      newRows.push(newRow);
+    }
     onTemplateChange({
       ...template,
       reportData: { ...template.reportData, rows: newRows },
     });
+    setInsertMenuAnchor(null);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedRowIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDropTargetIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    if (draggedRowIndex !== null && dropTargetIndex !== null && draggedRowIndex !== dropTargetIndex) {
+      const newRows = [...template.reportData.rows];
+      const [draggedRow] = newRows.splice(draggedRowIndex, 1);
+      newRows.splice(dropTargetIndex, 0, draggedRow);
+      onTemplateChange({
+        ...template,
+        reportData: { ...template.reportData, rows: newRows },
+      });
+    }
+    setDraggedRowIndex(null);
+    setDropTargetIndex(null);
+  };
+
+  const handleInsertClick = (event: React.MouseEvent<HTMLElement>, index: number) => {
+    setInsertMenuAnchor(event.currentTarget);
+    setInsertAtIndex(index);
   };
 
   const findRowReferences = (rowId: string) => {
@@ -616,33 +657,109 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                 sx={{ bgcolor: "background.paper", borderRadius: 1, mt: 1 }}
               >
                 {template.reportData.rows.map((row: any, index: number) => (
-                  <ListItem
-                    key={index}
-                    secondaryAction={
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={() => removeRow(row.id, index)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText
-                      primary={row.id}
-                      secondary={row.rowType}
-                      primaryTypographyProps={{ variant: "body2" }}
-                      secondaryTypographyProps={{
-                        variant: "caption",
-                        color: "primary",
+                  <Box key={row.id || index}>
+                    {/* Drop zone before each row */}
+                    <Box
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDrop={handleDragEnd}
+                      sx={{
+                        height: dropTargetIndex === index && draggedRowIndex !== index ? 24 : 4,
+                        bgcolor: dropTargetIndex === index && draggedRowIndex !== index ? "primary.light" : "transparent",
+                        borderRadius: 1,
+                        transition: "all 0.2s",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
-                    />
-                  </ListItem>
+                    >
+                      {dropTargetIndex === index && draggedRowIndex !== index && (
+                        <Typography variant="caption" color="primary.contrastText">
+                          Drop here
+                        </Typography>
+                      )}
+                    </Box>
+                    <ListItem
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragEnd={handleDragEnd}
+                      sx={{
+                        cursor: "grab",
+                        bgcolor: draggedRowIndex === index ? "action.selected" : "transparent",
+                        borderRadius: 1,
+                        "&:hover": { bgcolor: "action.hover" },
+                      }}
+                      secondaryAction={
+                        <Box sx={{ display: "flex", gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleInsertClick(e, index + 1)}
+                            title="Insert row after"
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            edge="end"
+                            size="small"
+                            onClick={() => removeRow(row.id, index)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      }
+                    >
+                      <DragIndicatorIcon
+                        sx={{ mr: 1, color: "text.disabled", cursor: "grab" }}
+                        fontSize="small"
+                      />
+                      <ListItemText
+                        primary={row.id}
+                        secondary={row.rowType}
+                        primaryTypographyProps={{ variant: "body2" }}
+                        secondaryTypographyProps={{
+                          variant: "caption",
+                          color: "primary",
+                        }}
+                      />
+                    </ListItem>
+                  </Box>
                 ))}
+                {/* Drop zone at the end */}
+                <Box
+                  onDragOver={(e) => handleDragOver(e, template.reportData.rows.length)}
+                  onDrop={handleDragEnd}
+                  sx={{
+                    height: dropTargetIndex === template.reportData.rows.length ? 24 : 4,
+                    bgcolor: dropTargetIndex === template.reportData.rows.length ? "primary.light" : "transparent",
+                    borderRadius: 1,
+                    transition: "all 0.2s",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {dropTargetIndex === template.reportData.rows.length && (
+                    <Typography variant="caption" color="primary.contrastText">
+                      Drop here
+                    </Typography>
+                  )}
+                </Box>
               </List>
             </Box>
           </AccordionDetails>
         </Accordion>
+
+        {/* Insert Row Menu */}
+        <Menu
+          anchorEl={insertMenuAnchor}
+          open={Boolean(insertMenuAnchor)}
+          onClose={() => setInsertMenuAnchor(null)}
+        >
+          <MenuItem onClick={() => addRow("HEADER", insertAtIndex)}>Header</MenuItem>
+          <MenuItem onClick={() => addRow("DATA", insertAtIndex)}>Data</MenuItem>
+          <MenuItem onClick={() => addRow("SEPARATOR", insertAtIndex)}>Separator</MenuItem>
+          <MenuItem onClick={() => addRow("DYNAMIC", insertAtIndex)}>Dynamic</MenuItem>
+          <MenuItem onClick={() => addRow("FOOTER", insertAtIndex)}>Footer</MenuItem>
+        </Menu>
       </Box>
 
       <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>

@@ -51,7 +51,6 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
         elevation={0} 
         sx={{ 
           width: 350, 
-          borderLeft: "1px solid #e0e0e0",
           bgcolor: "#fafafa",
           display: "flex",
           alignItems: "center",
@@ -81,7 +80,6 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
         elevation={0} 
         sx={{ 
           width: 350, 
-          borderLeft: "1px solid #e0e0e0",
           overflow: "auto",
           bgcolor: "#fafafa",
         }}
@@ -118,7 +116,6 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
       elevation={0} 
       sx={{ 
         width: 350, 
-        borderLeft: "1px solid #e0e0e0",
         overflow: "auto",
         bgcolor: "#fafafa",
       }}

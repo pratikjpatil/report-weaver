@@ -2,10 +2,13 @@ import { useState } from "react";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import Box from "@mui/material/Box";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import { ReportCanvas } from "@/components/jasper-editor/ReportCanvas";
 import { TopToolbar } from "@/components/jasper-editor/TopToolbar";
 import { LeftPanel } from "@/components/jasper-editor/LeftPanel";
 import { RightPanel } from "@/components/jasper-editor/RightPanel";
+import { VariantsPanel } from "@/components/jasper-editor/VariantsPanel";
 import { useToast } from "@/hooks/use-toast";
 
 const theme = createTheme({
@@ -35,6 +38,7 @@ const theme = createTheme({
 
 const Index = () => {
   const { toast } = useToast();
+  const [rightPanelTab, setRightPanelTab] = useState<"cell" | "variants">("cell");
   const [template, setTemplate] = useState<any>({
     templateMeta: {
       templateId: "1018404",
@@ -53,6 +57,7 @@ const Index = () => {
       columns: [],
       rows: [],
     },
+    variants: [],
   });
 
   const [selectedCell, setSelectedCell] = useState<{
@@ -111,17 +116,36 @@ const Index = () => {
             template={template}
             onTemplateChange={setTemplate}
             selectedCell={selectedCell}
-            onCellSelect={setSelectedCell}
+            onCellSelect={(cell) => setSelectedCell(cell)}
             formulaMode={formulaMode}
           />
 
-          <RightPanel
-            template={template}
-            onTemplateChange={setTemplate}
-            selectedCell={selectedCell}
-            formulaMode={formulaMode}
-            onFormulaModeChange={setFormulaMode}
-          />
+          <Box sx={{ display: "flex", flexDirection: "column", borderLeft: "1px solid #e0e0e0" }}>
+            <Tabs
+              value={rightPanelTab}
+              onChange={(_, v) => setRightPanelTab(v)}
+              sx={{ borderBottom: "1px solid #e0e0e0", bgcolor: "#fafafa", minHeight: 40 }}
+            >
+              <Tab label="Cell Properties" value="cell" sx={{ minHeight: 40, fontSize: "0.75rem" }} />
+              <Tab label="Variants" value="variants" sx={{ minHeight: 40, fontSize: "0.75rem" }} />
+            </Tabs>
+
+            {rightPanelTab === "cell" ? (
+              <RightPanel
+                template={template}
+                onTemplateChange={setTemplate}
+                selectedCell={selectedCell}
+                formulaMode={formulaMode}
+                onFormulaModeChange={setFormulaMode}
+              />
+            ) : (
+              <VariantsPanel
+                variants={template.variants || []}
+                template={template}
+                onVariantsChange={(variants) => setTemplate({ ...template, variants })}
+              />
+            )}
+          </Box>
         </Box>
       </Box>
     </ThemeProvider>

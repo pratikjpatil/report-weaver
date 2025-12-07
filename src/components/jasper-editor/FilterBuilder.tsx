@@ -52,21 +52,31 @@ export const FilterBuilder = ({
   const [newInValue, setNewInValue] = useState<string>("");
 
   // Convert filters object to array of conditions
+  // Expected backend format: { "COLUMN": { "op": "IN", "value": [...] } } or { "COLUMN": "value" } for simple equality
   const parseFilters = (): FilterCondition[] => {
     const conditions: FilterCondition[] = [];
     
     Object.entries(filters || {}).forEach(([column, value]) => {
       if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        // Complex condition like { ">": 500 } or { "IN": [...] }
-        Object.entries(value).forEach(([op, val]) => {
+        // Complex condition format: { "op": "IN", "value": [...] }
+        if (value.op !== undefined) {
           conditions.push({
             column,
-            operator: op,
-            value: val as string | string[],
+            operator: value.op,
+            value: value.value,
           });
-        });
+        } else {
+          // Old format fallback: { ">": 500 }
+          Object.entries(value).forEach(([op, val]) => {
+            conditions.push({
+              column,
+              operator: op,
+              value: val as string | string[],
+            });
+          });
+        }
       } else {
-        // Simple equality
+        // Simple equality: { "COLUMN": "value" }
         conditions.push({
           column,
           operator: "=",
@@ -80,19 +90,20 @@ export const FilterBuilder = ({
 
   const [conditions, setConditions] = useState<FilterCondition[]>(parseFilters);
 
-  // Convert conditions array back to filters object
+  // Convert conditions array back to filters object in backend expected format
+  // Format: { "COLUMN": { "op": "OPERATOR", "value": VALUE } }
   const conditionsToFilters = (conds: FilterCondition[]): Record<string, any> => {
     const result: Record<string, any> = {};
     
     conds.forEach((cond) => {
-      if (cond.operator === "=" || cond.operator === "equals") {
-        result[cond.column] = cond.value;
-      } else if (cond.operator === "IS NULL") {
-        result[cond.column] = { "IS NULL": true };
+      if (cond.operator === "IS NULL") {
+        result[cond.column] = { op: "IS NULL", value: null };
       } else if (cond.operator === "IS NOT NULL") {
-        result[cond.column] = { "IS NOT NULL": true };
+        result[cond.column] = { op: "IS NOT NULL", value: null };
+      } else if (cond.operator === "IN" || cond.operator === "NOT IN") {
+        result[cond.column] = { op: cond.operator, value: cond.value };
       } else {
-        result[cond.column] = { [cond.operator]: cond.value };
+        result[cond.column] = { op: cond.operator, value: cond.value };
       }
     });
     

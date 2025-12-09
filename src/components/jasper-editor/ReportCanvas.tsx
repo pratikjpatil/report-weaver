@@ -32,12 +32,8 @@ export const ReportCanvas = ({
     event: React.MouseEvent
   ) => {
     if (formulaMode) {
-      // In formula mode, emit a custom event with cell reference
-      // const cellRef = `R${rowIndex + 1}C${cellIndex + 1}`;
       const cellRef = `cell_${rowId}_${colId}`;
-      window.dispatchEvent(
-        new CustomEvent("formula-cell-selected", { detail: cellRef })
-      );
+      window.dispatchEvent(new CustomEvent("formula-cell-selected", { detail: cellRef }));
       event.stopPropagation();
     } else {
       onCellSelect({ rowIndex, cellIndex });
@@ -47,8 +43,7 @@ export const ReportCanvas = ({
   const getCellValue = (cell: any) => {
     if (cell.type === "TEXT") return cell.value || "Click to edit";
     if (cell.type === "FORMULA") return `= ${cell.expression || "formula"}`;
-    if (cell.type?.startsWith("DB_"))
-      return `${cell.type} (${cell.source?.column || "?"})`;
+    if (cell.type?.startsWith("DB_")) return `${cell.type} (${cell.source?.column || "?"})`;
     return "Empty cell";
   };
 
@@ -62,6 +57,37 @@ export const ReportCanvas = ({
     };
     return colors[type] || "#757575";
   };
+
+  // Calculate which cells should be hidden due to colspan/rowspan
+  const getHiddenCells = () => {
+    const hidden = new Set<string>();
+    
+    template.reportData.rows.forEach((row: any, rowIndex: number) => {
+      if (row.rowType === "DYNAMIC") return;
+      
+      let colOffset = 0;
+      row.cells?.forEach((cell: any, cellIndex: number) => {
+        const colspan = cell.render?.colspan || 1;
+        const rowspan = cell.render?.rowspan || 1;
+
+        // Mark cells to the right as hidden (due to colspan)
+        for (let c = 1; c < colspan; c++) {
+          hidden.add(`${rowIndex}-${cellIndex + c}`);
+        }
+
+        // Mark cells below as hidden (due to rowspan)
+        for (let r = 1; r < rowspan; r++) {
+          for (let c = 0; c < colspan; c++) {
+            hidden.add(`${rowIndex + r}-${cellIndex + c}`);
+          }
+        }
+      });
+    });
+
+    return hidden;
+  };
+
+  const hiddenCells = getHiddenCells();
 
   return (
     <Box
@@ -81,8 +107,6 @@ export const ReportCanvas = ({
         elevation={3}
         sx={{
           width: "100%",
-          // maxWidth: 1200,
-          // minHeight: "calc(100vh - 150px)",
           bgcolor: "white",
           p: 4,
           boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
@@ -100,8 +124,7 @@ export const ReportCanvas = ({
             }}
           >
             <Typography variant="body2" fontWeight={600}>
-              Formula Building Mode Active - Click any cell to add it to your
-              formula
+              Formula Building Mode Active - Click any cell to add it to your formula
             </Typography>
           </Box>
         )}
@@ -114,17 +137,12 @@ export const ReportCanvas = ({
             justifyContent: "space-between",
           }}
         >
-          <Typography
-            variant="h5"
-            fontWeight={600}
-            sx={{ textAlign: "center" }}
-          >
+          <Typography variant="h5" fontWeight={600} sx={{ textAlign: "center" }}>
             {template.reportMeta.reportName}
           </Typography>
 
           <Typography variant="caption" color="text.secondary">
-            {template.reportData.columns.length} columns ×{" "}
-            {template.reportData.rows.length} rows
+            {template.reportData.columns.length} columns × {template.reportData.rows.length} rows
           </Typography>
         </Box>
 
@@ -133,18 +151,16 @@ export const ReportCanvas = ({
             <Typography variant="body1" gutterBottom>
               Add columns from the left panel to get started
             </Typography>
-            <Typography variant="caption">
-              Define your report structure first
-            </Typography>
+            <Typography variant="caption">Define your report structure first</Typography>
           </Box>
         ) : (
           <TableContainer>
-            <Table sx={{ border: "1px solid #e0e0e0" }}>
+            <Table sx={{ border: "1px solid #e0e0e0", tableLayout: "fixed" }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: "#f5f5f5" }}>
                   <TableCell
                     sx={{
-                      width: 60,
+                      width: 80,
                       fontWeight: 600,
                       fontSize: "0.75rem",
                       color: "text.secondary",
@@ -153,28 +169,21 @@ export const ReportCanvas = ({
                   >
                     #
                   </TableCell>
-                  {template.reportData.columns.map(
-                    (col: any, colIndex: number) => (
-                      <TableCell
-                        key={colIndex}
-                        sx={{
-                          fontWeight: 600,
-                          fontSize: "0.875rem",
-                          width: col.width || 150,
-                          minWidth: col.width || 150,
-                        }}
-                      >
-                        {col.name}
-                        <Typography
-                          variant="caption"
-                          display="block"
-                          color="text.secondary"
-                        >
-                          {col.id} ({col.width || 150}px)
-                        </Typography>
-                      </TableCell>
-                    )
-                  )}
+                  {template.reportData.columns.map((col: any, colIndex: number) => (
+                    <TableCell
+                      key={colIndex}
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: "0.875rem",
+                        width: col.width || 150,
+                      }}
+                    >
+                      {col.name}
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {col.id} ({col.width || 150}px)
+                      </Typography>
+                    </TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -193,11 +202,7 @@ export const ReportCanvas = ({
                         textAlign: "center",
                       }}
                     >
-                      <Typography
-                        variant="caption"
-                        display="block"
-                        color="text.secondary"
-                      >
+                      <Typography variant="caption" display="block" color="text.secondary">
                         {row.id}
                       </Typography>
                       <Chip
@@ -216,14 +221,10 @@ export const ReportCanvas = ({
                     {row.rowType === "DYNAMIC" ? (
                       <TableCell
                         colSpan={template.reportData.columns.length}
-                        onClick={() =>
-                          onCellSelect({ rowIndex, cellIndex: -1 })
-                        }
+                        onClick={() => onCellSelect({ rowIndex, cellIndex: -1 })}
                         sx={{
                           bgcolor:
-                            selectedCell?.rowIndex === rowIndex
-                              ? "#c8e6c9"
-                              : "#e8f5e9",
+                            selectedCell?.rowIndex === rowIndex ? "#c8e6c9" : "#e8f5e9",
                           fontStyle: "italic",
                           color: "text.secondary",
                           cursor: "pointer",
@@ -236,15 +237,22 @@ export const ReportCanvas = ({
                           },
                         }}
                       >
-                        🔄 Dynamic rows from{" "}
-                        {row.dynamicConfig?.table || "database"} - Click to
+                        🔄 Dynamic rows from {row.dynamicConfig?.table || "database"} - Click to
                         configure
                       </TableCell>
                     ) : (
                       row.cells?.map((cell: any, cellIndex: number) => {
+                        // Skip cells that are hidden by colspan/rowspan
+                        if (hiddenCells.has(`${rowIndex}-${cellIndex}`)) {
+                          return null;
+                        }
+
                         const isSelected =
                           selectedCell?.rowIndex === rowIndex &&
                           selectedCell?.cellIndex === cellIndex;
+
+                        const colspan = cell.render?.colspan || 1;
+                        const rowspan = cell.render?.rowspan || 1;
 
                         return (
                           <TableCell
@@ -258,8 +266,8 @@ export const ReportCanvas = ({
                                 e
                               )
                             }
-                            colSpan={cell.render?.colspan || 1}
-                            rowSpan={cell.render?.rowspan || 1}
+                            colSpan={colspan}
+                            rowSpan={rowspan}
                             sx={{
                               cursor: formulaMode ? "crosshair" : "pointer",
                               position: "relative",
@@ -268,9 +276,7 @@ export const ReportCanvas = ({
                                 : formulaMode
                                 ? "#fff9c4"
                                 : "white",
-                              border: isSelected
-                                ? "2px solid #1976d2"
-                                : "1px solid #e0e0e0",
+                              border: isSelected ? "2px solid #1976d2" : "1px solid #e0e0e0",
                               fontWeight: cell.render?.bold ? 600 : 400,
                               textAlign: cell.render?.align || "left",
                               "&:hover": {
@@ -283,26 +289,36 @@ export const ReportCanvas = ({
                               transition: "all 0.2s ease",
                             }}
                           >
-                            <Typography
-                              variant="body2"
-                              sx={{ fontSize: "0.875rem" }}
-                            >
+                            <Typography variant="body2" sx={{ fontSize: "0.875rem" }}>
                               {getCellValue(cell)}
                             </Typography>
-                            {cell.render?.colspan &&
-                              cell.render.colspan > 1 && (
-                                <Chip
-                                  label={`colspan: ${cell.render.colspan}`}
-                                  size="small"
-                                  sx={{
-                                    position: "absolute",
-                                    top: 4,
-                                    right: 4,
-                                    height: 18,
-                                    fontSize: "0.65rem",
-                                  }}
-                                />
-                              )}
+                            {colspan > 1 && (
+                              <Chip
+                                label={`colspan: ${colspan}`}
+                                size="small"
+                                sx={{
+                                  position: "absolute",
+                                  top: 4,
+                                  right: 4,
+                                  height: 18,
+                                  fontSize: "0.65rem",
+                                }}
+                              />
+                            )}
+                            {rowspan > 1 && (
+                              <Chip
+                                label={`rowspan: ${rowspan}`}
+                                size="small"
+                                color="secondary"
+                                sx={{
+                                  position: "absolute",
+                                  top: colspan > 1 ? 24 : 4,
+                                  right: 4,
+                                  height: 18,
+                                  fontSize: "0.65rem",
+                                }}
+                              />
+                            )}
                           </TableCell>
                         );
                       })
@@ -314,17 +330,14 @@ export const ReportCanvas = ({
           </TableContainer>
         )}
 
-        {template.reportData.rows.length === 0 &&
-          template.reportData.columns.length > 0 && (
-            <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
-              <Typography variant="body1" gutterBottom>
-                Add rows from the left panel
-              </Typography>
-              <Typography variant="caption">
-                Start building your report structure
-              </Typography>
-            </Box>
-          )}
+        {template.reportData.rows.length === 0 && template.reportData.columns.length > 0 && (
+          <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
+            <Typography variant="body1" gutterBottom>
+              Add rows from the left panel
+            </Typography>
+            <Typography variant="caption">Start building your report structure</Typography>
+          </Box>
+        )}
       </Paper>
     </Box>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
@@ -13,8 +13,12 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { useConfig } from "@/contexts/ConfigContext";
+import { FilterBuilder } from "./FilterBuilder";
 
 interface FormulaBuilderProps {
   expression: string;
@@ -35,19 +39,97 @@ export const FormulaBuilder = ({
   formulaMode,
   onFormulaModeChange,
 }: FormulaBuilderProps) => {
+  const { tableConfigs, getSelectableColumns } = useConfig();
   const [showVariableDialog, setShowVariableDialog] = useState(false);
   const [newVarName, setNewVarName] = useState("");
   const [newVarType, setNewVarType] = useState("CELL_REF");
   const [newVarConfig, setNewVarConfig] = useState<any>({});
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Validate expression
+  const validateExpression = useCallback((expr: string) => {
+    const errors: string[] = [];
+
+    if (!expr.trim()) {
+      return errors;
+    }
+
+    // Check for balanced parentheses
+    let parenCount = 0;
+    for (const char of expr) {
+      if (char === "(") parenCount++;
+      if (char === ")") parenCount--;
+      if (parenCount < 0) {
+        errors.push("Unbalanced parentheses: extra closing parenthesis");
+        break;
+      }
+    }
+    if (parenCount > 0) {
+      errors.push("Unbalanced parentheses: missing closing parenthesis");
+    }
+
+    // Check for consecutive operators
+    const operatorPattern = /[+\-*/]{2,}/;
+    if (operatorPattern.test(expr.replace(/\s/g, ""))) {
+      errors.push("Consecutive operators detected (e.g., ++ or --)");
+    }
+
+    // Check for operators at start/end (excluding parentheses and cell refs)
+    const trimmed = expr.trim();
+    if (/^[+*/]/.test(trimmed)) {
+      errors.push("Expression cannot start with an operator (except -)");
+    }
+    if (/[+\-*/]$/.test(trimmed)) {
+      errors.push("Expression cannot end with an operator");
+    }
+
+    // Check for undefined variables
+    const varPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+    const cellPattern = /cell_[A-Za-z0-9_]+_[A-Za-z0-9_]+/g;
+    const knownVars = new Set(Object.keys(variables || {}));
+
+    // Extract all cell references
+    const cellRefs = expr.match(cellPattern) || [];
+
+    // Validate cell references exist in template
+    cellRefs.forEach((ref) => {
+      const match = ref.match(/cell_([A-Za-z0-9_]+)_([A-Za-z0-9_]+)/);
+      if (match) {
+        const [, rowId, colId] = match;
+        const rowExists = template.reportData.rows.some((r: any) => r.id === rowId);
+        const colExists = template.reportData.columns.some((c: any) => c.id === colId);
+
+        if (!rowExists) {
+          errors.push(`Invalid cell reference: Row "${rowId}" does not exist`);
+        }
+        if (!colExists) {
+          errors.push(`Invalid cell reference: Column "${colId}" does not exist`);
+        }
+      }
+    });
+
+    return errors;
+  }, [template, variables]);
+
+  useEffect(() => {
+    const errors = validateExpression(expression);
+    setValidationErrors(errors);
+  }, [expression, validateExpression]);
 
   useEffect(() => {
     const handleCellSelected = (event: any) => {
       const cellRef = event.detail;
-      onExpressionChange(expression + (expression ? ' ' : '') + cellRef);
+      // Add operator if expression doesn't end with one and isn't empty
+      const trimmedExpr = expression.trim();
+      if (trimmedExpr && !trimmedExpr.match(/[+\-*/(\s]$/)) {
+        onExpressionChange(expression + " + " + cellRef);
+      } else {
+        onExpressionChange(expression + (expression && !expression.endsWith(" ") ? " " : "") + cellRef);
+      }
     };
 
-    window.addEventListener('formula-cell-selected', handleCellSelected);
-    return () => window.removeEventListener('formula-cell-selected', handleCellSelected);
+    window.addEventListener("formula-cell-selected", handleCellSelected);
+    return () => window.removeEventListener("formula-cell-selected", handleCellSelected);
   }, [expression, onExpressionChange]);
 
   const addOperator = (op: string) => {
@@ -59,19 +141,20 @@ export const FormulaBuilder = ({
   };
 
   const addVariable = () => {
+    setNewVarName("");
+    setNewVarType("CELL_REF");
+    setNewVarConfig({});
     setShowVariableDialog(true);
   };
 
   const saveVariable = () => {
     if (!newVarName) return;
-    
+
     const newVariables = { ...variables };
-    
+
     if (newVarType === "CELL_REF") {
-      // Variables for cell references are just placeholders
       newVariables[newVarName] = "CELL_REF";
     } else {
-      // DB variables
       newVariables[newVarName] = {
         type: newVarType,
         table: newVarConfig.table || "",
@@ -79,9 +162,17 @@ export const FormulaBuilder = ({
         filters: newVarConfig.filters || {},
       };
     }
-    
+
     onVariablesChange(newVariables);
-    onExpressionChange(expression + ` ${newVarName}`);
+    
+    // Add with operator if needed
+    const trimmedExpr = expression.trim();
+    if (trimmedExpr && !trimmedExpr.match(/[+\-*/(\s]$/)) {
+      onExpressionChange(expression + " + " + newVarName);
+    } else {
+      onExpressionChange(expression + (expression && !expression.endsWith(" ") ? " " : "") + newVarName);
+    }
+    
     setShowVariableDialog(false);
     setNewVarName("");
     setNewVarType("CELL_REF");
@@ -92,7 +183,25 @@ export const FormulaBuilder = ({
     const newVariables = { ...variables };
     delete newVariables[varName];
     onVariablesChange(newVariables);
+
+    // Remove variable from expression and clean up orphaned operators
+    let newExpr = expression;
+    
+    // Remove the variable
+    newExpr = newExpr.replace(new RegExp(`\\b${varName}\\b`, "g"), "");
+    
+    // Clean up double operators and spaces
+    newExpr = newExpr
+      .replace(/\s*[+\-*/]\s*[+\-*/]\s*/g, " + ")
+      .replace(/^\s*[+\-*/]\s*/, "")
+      .replace(/\s*[+\-*/]\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    onExpressionChange(newExpr);
   };
+
+  const selectableColumns = newVarConfig.table ? getSelectableColumns(newVarConfig.table) : [];
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -103,13 +212,26 @@ export const FormulaBuilder = ({
         <TextField
           value={expression}
           onChange={(e) => onExpressionChange(e.target.value)}
-          placeholder="e.g., R1C1 + variable1"
+          placeholder="e.g., cell_R1_C1 + variable1"
           size="small"
           fullWidth
           multiline
           rows={2}
+          error={validationErrors.length > 0}
           sx={{ fontFamily: "monospace" }}
         />
+        {validationErrors.length > 0 && (
+          <Alert severity="error" sx={{ mt: 1, py: 0 }}>
+            <Typography variant="caption">
+              {validationErrors.map((err, i) => (
+                <span key={i}>
+                  {err}
+                  {i < validationErrors.length - 1 && <br />}
+                </span>
+              ))}
+            </Typography>
+          </Alert>
+        )}
       </Box>
 
       <Box>
@@ -118,13 +240,7 @@ export const FormulaBuilder = ({
         </Typography>
         <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
           {["+", "-", "*", "/", "(", ")"].map((op) => (
-            <Button
-              key={op}
-              variant="outlined"
-              size="small"
-              onClick={() => addOperator(op)}
-              sx={{ minWidth: 40 }}
-            >
+            <Button key={op} variant="outlined" size="small" onClick={() => addOperator(op)} sx={{ minWidth: 40 }}>
               {op}
             </Button>
           ))}
@@ -140,22 +256,17 @@ export const FormulaBuilder = ({
             variant={formulaMode ? "contained" : "outlined"}
             size="small"
             onClick={toggleFormulaMode}
-            sx={{ 
+            sx={{
               bgcolor: formulaMode ? "#ff9800" : undefined,
               color: formulaMode ? "white" : undefined,
               "&:hover": {
                 bgcolor: formulaMode ? "#f57c00" : undefined,
-              }
+              },
             }}
           >
             {formulaMode ? "Click cells to add (Active)" : "Select Cell from Canvas"}
           </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={addVariable}
-          >
+          <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={addVariable}>
             Variable
           </Button>
         </Box>
@@ -182,7 +293,9 @@ export const FormulaBuilder = ({
               <Box>
                 <Chip label={name} size="small" color="primary" sx={{ mb: 0.5 }} />
                 <Typography variant="caption" display="block" color="text.secondary">
-                  {config === "CELL_REF" ? "Cell Reference" : `${config.type} from ${config.table}.${config.column}`}
+                  {config === "CELL_REF"
+                    ? "Cell Reference"
+                    : `${config.type} from ${config.table}.${config.column}`}
                 </Typography>
               </Box>
               <IconButton size="small" onClick={() => removeVariable(name)}>
@@ -200,12 +313,13 @@ export const FormulaBuilder = ({
             <TextField
               label="Variable Name"
               value={newVarName}
-              onChange={(e) => setNewVarName(e.target.value)}
+              onChange={(e) => setNewVarName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
               placeholder="e.g., maxBalance"
               size="small"
               fullWidth
+              helperText="Only letters, numbers, and underscores"
             />
-            
+
             <FormControl size="small" fullWidth>
               <InputLabel>Variable Type</InputLabel>
               <Select
@@ -225,36 +339,43 @@ export const FormulaBuilder = ({
 
             {newVarType !== "CELL_REF" && (
               <>
-                <TextField
-                  label="Table"
-                  value={newVarConfig.table || ""}
-                  onChange={(e) => setNewVarConfig({ ...newVarConfig, table: e.target.value })}
-                  placeholder="e.g., GL_BALANCE"
+                <Autocomplete
                   size="small"
-                  fullWidth
-                />
-                <TextField
-                  label="Column"
-                  value={newVarConfig.column || ""}
-                  onChange={(e) => setNewVarConfig({ ...newVarConfig, column: e.target.value })}
-                  placeholder="e.g., BALANCE"
-                  size="small"
-                  fullWidth
-                />
-                <TextField
-                  label="Filters (JSON)"
-                  value={JSON.stringify(newVarConfig.filters || {}, null, 2)}
-                  onChange={(e) => {
-                    try {
-                      setNewVarConfig({ ...newVarConfig, filters: JSON.parse(e.target.value) });
-                    } catch {}
+                  options={tableConfigs.map((t) => t.tableName)}
+                  value={newVarConfig.table || null}
+                  onChange={(_, newValue) =>
+                    setNewVarConfig({ ...newVarConfig, table: newValue || "", column: "" })
+                  }
+                  getOptionLabel={(option) => {
+                    const table = tableConfigs.find((t) => t.tableName === option);
+                    return table ? `${table.tableName} (${table.label})` : option;
                   }}
-                  placeholder='{"BRANCH_CODE": "10089"}'
-                  size="small"
-                  multiline
-                  rows={3}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Table" placeholder="Select table..." />
+                  )}
                   fullWidth
-                  sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                />
+
+                <Autocomplete
+                  size="small"
+                  options={selectableColumns}
+                  value={newVarConfig.column || null}
+                  onChange={(_, newValue) => setNewVarConfig({ ...newVarConfig, column: newValue || "" })}
+                  disabled={!newVarConfig.table}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Column"
+                      placeholder={newVarConfig.table ? "Select column..." : "Select table first"}
+                    />
+                  )}
+                  fullWidth
+                />
+
+                <FilterBuilder
+                  filters={newVarConfig.filters || {}}
+                  onFiltersChange={(filters) => setNewVarConfig({ ...newVarConfig, filters })}
+                  tableName={newVarConfig.table || ""}
                 />
               </>
             )}

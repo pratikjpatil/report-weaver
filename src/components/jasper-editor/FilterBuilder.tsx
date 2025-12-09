@@ -10,8 +10,10 @@ import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
+import Autocomplete from "@mui/material/Autocomplete";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { useConfig } from "@/contexts/ConfigContext";
 
 interface FilterCondition {
   column: string;
@@ -22,7 +24,7 @@ interface FilterCondition {
 interface FilterBuilderProps {
   filters: Record<string, any>;
   onFiltersChange: (filters: Record<string, any>) => void;
-  availableColumns?: string[];
+  tableName?: string;
 }
 
 const OPERATORS = [
@@ -39,26 +41,23 @@ const OPERATORS = [
   { value: "IS NOT NULL", label: "Is Not Empty (NOT NULL)" },
 ];
 
-const DEFAULT_COLUMNS = [
-  "ID", "BALANCE", "CURRENCY", "BALANCE_DATE", "BRANCH_CODE", 
-  "GL_CODE", "AMOUNT", "ACCOUNT_NAME", "STATUS", "CREATED_DATE"
-];
-
-export const FilterBuilder = ({ 
-  filters, 
-  onFiltersChange, 
-  availableColumns = DEFAULT_COLUMNS 
+export const FilterBuilder = ({
+  filters,
+  onFiltersChange,
+  tableName = "",
 }: FilterBuilderProps) => {
+  const { getFilterableColumns } = useConfig();
   const [newInValue, setNewInValue] = useState<string>("");
 
+  // Get filterable columns for the selected table
+  const availableColumns = tableName ? getFilterableColumns(tableName) : [];
+
   // Convert filters object to array of conditions
-  // Expected backend format: { "COLUMN": { "op": "IN", "value": [...] } } or { "COLUMN": "value" } for simple equality
   const parseFilters = (): FilterCondition[] => {
     const conditions: FilterCondition[] = [];
-    
+
     Object.entries(filters || {}).forEach(([column, value]) => {
       if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        // Complex condition format: { "op": "IN", "value": [...] }
         if (value.op !== undefined) {
           conditions.push({
             column,
@@ -66,7 +65,6 @@ export const FilterBuilder = ({
             value: value.value,
           });
         } else {
-          // Old format fallback: { ">": 500 }
           Object.entries(value).forEach(([op, val]) => {
             conditions.push({
               column,
@@ -76,7 +74,6 @@ export const FilterBuilder = ({
           });
         }
       } else {
-        // Simple equality: { "COLUMN": "value" }
         conditions.push({
           column,
           operator: "=",
@@ -84,29 +81,26 @@ export const FilterBuilder = ({
         });
       }
     });
-    
+
     return conditions;
   };
 
   const [conditions, setConditions] = useState<FilterCondition[]>(parseFilters);
 
-  // Convert conditions array back to filters object in backend expected format
-  // Format: { "COLUMN": { "op": "OPERATOR", "value": VALUE } }
+  // Convert conditions array back to filters object
   const conditionsToFilters = (conds: FilterCondition[]): Record<string, any> => {
     const result: Record<string, any> = {};
-    
+
     conds.forEach((cond) => {
       if (cond.operator === "IS NULL") {
         result[cond.column] = { op: "IS NULL", value: null };
       } else if (cond.operator === "IS NOT NULL") {
         result[cond.column] = { op: "IS NOT NULL", value: null };
-      } else if (cond.operator === "IN" || cond.operator === "NOT IN") {
-        result[cond.column] = { op: cond.operator, value: cond.value };
       } else {
         result[cond.column] = { op: cond.operator, value: cond.value };
       }
     });
-    
+
     return result;
   };
 
@@ -129,8 +123,7 @@ export const FilterBuilder = ({
   const updateCondition = (index: number, field: keyof FilterCondition, value: any) => {
     const newConditions = [...conditions];
     newConditions[index] = { ...newConditions[index], [field]: value };
-    
-    // Reset value when changing to/from IN operator
+
     if (field === "operator") {
       if (value === "IN" || value === "NOT IN") {
         newConditions[index].value = [];
@@ -140,15 +133,15 @@ export const FilterBuilder = ({
         newConditions[index].value = "";
       }
     }
-    
+
     updateConditions(newConditions);
   };
 
   const addInValue = (index: number, val: string) => {
     if (!val.trim()) return;
     const newConditions = [...conditions];
-    const currentValues = Array.isArray(newConditions[index].value) 
-      ? newConditions[index].value as string[] 
+    const currentValues = Array.isArray(newConditions[index].value)
+      ? (newConditions[index].value as string[])
       : [];
     newConditions[index].value = [...currentValues, val.trim()];
     updateConditions(newConditions);
@@ -176,12 +169,21 @@ export const FilterBuilder = ({
           startIcon={<AddIcon />}
           onClick={addCondition}
           variant="outlined"
+          disabled={!tableName}
         >
           Add Condition
         </Button>
       </Box>
 
-      {conditions.length === 0 && (
+      {!tableName && (
+        <Paper variant="outlined" sx={{ p: 2, textAlign: "center", bgcolor: "#fff3e0" }}>
+          <Typography variant="body2" color="warning.dark">
+            Please select a table first to add filter conditions.
+          </Typography>
+        </Paper>
+      )}
+
+      {tableName && conditions.length === 0 && (
         <Paper variant="outlined" sx={{ p: 2, textAlign: "center", bgcolor: "#f5f5f5" }}>
           <Typography variant="body2" color="text.secondary">
             No filter conditions. Click "Add Condition" to add filters.
@@ -190,24 +192,17 @@ export const FilterBuilder = ({
       )}
 
       {conditions.map((condition, index) => (
-        <Paper
-          key={index}
-          variant="outlined"
-          sx={{ p: 1.5, bgcolor: "#fafafa" }}
-        >
+        <Paper key={index} variant="outlined" sx={{ p: 1.5, bgcolor: "#fafafa" }}>
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>Column</InputLabel>
-              <Select
-                value={condition.column}
-                onChange={(e) => updateCondition(index, "column", e.target.value)}
-                label="Column"
-              >
-                {availableColumns.map((col) => (
-                  <MenuItem key={col} value={col}>{col}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              size="small"
+              sx={{ minWidth: 140 }}
+              options={availableColumns}
+              value={condition.column || null}
+              onChange={(_, newValue) => updateCondition(index, "column", newValue || "")}
+              renderInput={(params) => <TextField {...params} label="Column" />}
+              freeSolo={false}
+            />
 
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <InputLabel>Operator</InputLabel>
@@ -217,7 +212,9 @@ export const FilterBuilder = ({
                 label="Operator"
               >
                 {OPERATORS.map((op) => (
-                  <MenuItem key={op.value} value={op.value}>{op.label}</MenuItem>
+                  <MenuItem key={op.value} value={op.value}>
+                    {op.label}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -232,32 +229,28 @@ export const FilterBuilder = ({
               />
             )}
 
-            <IconButton
-              size="small"
-              onClick={() => removeCondition(index)}
-              color="error"
-            >
+            <IconButton size="small" onClick={() => removeCondition(index)} color="error">
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Box>
 
-          {/* IN/NOT IN value builder */}
           {isInOperator(condition.operator) && (
             <Box sx={{ mt: 1.5, pl: 1 }}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
                 Values in list:
               </Typography>
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mb: 1 }}>
-                {Array.isArray(condition.value) && condition.value.map((val, valIndex) => (
-                  <Chip
-                    key={valIndex}
-                    label={val}
-                    size="small"
-                    onDelete={() => removeInValue(index, valIndex)}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ))}
+                {Array.isArray(condition.value) &&
+                  condition.value.map((val, valIndex) => (
+                    <Chip
+                      key={valIndex}
+                      label={val}
+                      size="small"
+                      onDelete={() => removeInValue(index, valIndex)}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  ))}
                 {(!Array.isArray(condition.value) || condition.value.length === 0) && (
                   <Typography variant="caption" color="text.disabled">
                     No values added yet
@@ -278,11 +271,7 @@ export const FilterBuilder = ({
                   }}
                   sx={{ flex: 1 }}
                 />
-                <Button
-                  size="small"
-                  variant="contained"
-                  onClick={() => addInValue(index, newInValue)}
-                >
+                <Button size="small" variant="contained" onClick={() => addInValue(index, newInValue)}>
                   Add
                 </Button>
               </Box>
@@ -300,11 +289,12 @@ export const FilterBuilder = ({
             {conditions.map((c, i) => (
               <Typography key={i} variant="caption" color="text.secondary" sx={{ display: "block" }}>
                 {i > 0 && "AND "}
-                {c.column} {c.operator} {
-                  isNullOperator(c.operator) ? "" : 
-                  isInOperator(c.operator) ? `(${(c.value as string[]).join(", ")})` : 
-                  `"${c.value}"`
-                }
+                {c.column} {c.operator}{" "}
+                {isNullOperator(c.operator)
+                  ? ""
+                  : isInOperator(c.operator)
+                  ? `(${(c.value as string[]).join(", ")})`
+                  : `"${c.value}"`}
               </Typography>
             ))}
           </Box>

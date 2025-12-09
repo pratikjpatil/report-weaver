@@ -10,9 +10,11 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
+import Autocomplete from "@mui/material/Autocomplete";
 import { FormulaBuilder } from "./FormulaBuilder";
 import { DynamicRowConfig } from "./DynamicRowConfig";
 import { FilterBuilder } from "./FilterBuilder";
+import { useConfig } from "@/contexts/ConfigContext";
 
 interface RightPanelProps {
   template: any;
@@ -22,14 +24,22 @@ interface RightPanelProps {
   onFormulaModeChange: (mode: boolean) => void;
 }
 
-export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMode, onFormulaModeChange }: RightPanelProps) => {
+export const RightPanel = ({
+  template,
+  onTemplateChange,
+  selectedCell,
+  formulaMode,
+  onFormulaModeChange,
+}: RightPanelProps) => {
+  const { tableConfigs, getSelectableColumns, getAllowedAggFuncs } = useConfig();
+
   const updateCell = (field: string, value: any) => {
     if (!selectedCell) return;
-    
+
     const newTemplate = { ...template };
     const row = newTemplate.reportData.rows[selectedCell.rowIndex];
     const cell = row.cells[selectedCell.cellIndex];
-    
+
     if (field.includes(".")) {
       const parts = field.split(".");
       let current = cell;
@@ -41,16 +51,16 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
     } else {
       cell[field] = value;
     }
-    
+
     onTemplateChange(newTemplate);
   };
 
   if (!selectedCell) {
     return (
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          width: 350, 
+      <Paper
+        elevation={0}
+        sx={{
+          width: 350,
           bgcolor: "#fafafa",
           display: "flex",
           alignItems: "center",
@@ -72,14 +82,18 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
 
   const row = template.reportData.rows[selectedCell.rowIndex];
   const cell = row?.cells?.[selectedCell.cellIndex];
-  
-  // Handle dynamic row configuration (cellIndex -1 means the dynamic row itself was selected)
+  const templateColumns = template.reportData.columns.map((col: any) => ({
+    id: col.id,
+    name: col.name,
+  }));
+
+  // Handle dynamic row configuration
   if (row?.rowType === "DYNAMIC" || (row?.rowType === "DYNAMIC" && selectedCell.cellIndex === -1)) {
     return (
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          width: 350, 
+      <Paper
+        elevation={0}
+        sx={{
+          width: 350,
           overflow: "auto",
           bgcolor: "#fafafa",
         }}
@@ -89,15 +103,12 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
             <Typography variant="subtitle2" fontWeight={600} sx={{ color: "text.secondary" }}>
               DYNAMIC ROW
             </Typography>
-            <Chip 
-              label={`Row ${selectedCell.rowIndex + 1}`}
-              size="small"
-              sx={{ fontSize: "0.7rem" }}
-            />
+            <Chip label={`Row ${selectedCell.rowIndex + 1}`} size="small" sx={{ fontSize: "0.7rem" }} />
           </Box>
 
           <DynamicRowConfig
             dynamicConfig={row.dynamicConfig || {}}
+            templateColumns={templateColumns}
             onConfigChange={(config) => {
               const newTemplate = { ...template };
               newTemplate.reportData.rows[selectedCell.rowIndex].dynamicConfig = config;
@@ -108,14 +119,48 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
       </Paper>
     );
   }
-  
+
   if (!cell) return null;
 
+  const selectedTable = cell.source?.table || "";
+  const selectableColumns = selectedTable ? getSelectableColumns(selectedTable) : [];
+
+  // Get allowed cell types based on selected column's aggFuncs
+  const getCellTypeOptions = () => {
+    const baseTypes = [
+      { value: "TEXT", label: "Text" },
+      { value: "DB_VALUE", label: "DB Value" },
+      { value: "FORMULA", label: "Formula" },
+    ];
+
+    if (!selectedTable || !cell.source?.column) {
+      return [
+        ...baseTypes,
+        { value: "DB_COUNT", label: "DB Count" },
+        { value: "DB_SUM", label: "DB Sum" },
+        { value: "DB_AVG", label: "DB Average" },
+        { value: "DB_MIN", label: "DB Min" },
+        { value: "DB_MAX", label: "DB Max" },
+      ];
+    }
+
+    const allowedAggFuncs = getAllowedAggFuncs(selectedTable, cell.source.column);
+    const aggTypes = [];
+
+    if (allowedAggFuncs.includes("COUNT")) aggTypes.push({ value: "DB_COUNT", label: "DB Count" });
+    if (allowedAggFuncs.includes("SUM")) aggTypes.push({ value: "DB_SUM", label: "DB Sum" });
+    if (allowedAggFuncs.includes("AVG")) aggTypes.push({ value: "DB_AVG", label: "DB Average" });
+    if (allowedAggFuncs.includes("MIN")) aggTypes.push({ value: "DB_MIN", label: "DB Min" });
+    if (allowedAggFuncs.includes("MAX")) aggTypes.push({ value: "DB_MAX", label: "DB Max" });
+
+    return [...baseTypes, ...aggTypes];
+  };
+
   return (
-    <Paper 
-      elevation={0} 
-      sx={{ 
-        width: 350, 
+    <Paper
+      elevation={0}
+      sx={{
+        width: 350,
         overflow: "auto",
         bgcolor: "#fafafa",
       }}
@@ -125,7 +170,7 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
           <Typography variant="subtitle2" fontWeight={600} sx={{ color: "text.secondary" }}>
             CELL PROPERTIES
           </Typography>
-          <Chip 
+          <Chip
             label={`Row ${selectedCell.rowIndex + 1}, Cell ${selectedCell.cellIndex + 1}`}
             size="small"
             sx={{ fontSize: "0.7rem" }}
@@ -140,14 +185,11 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
               onChange={(e) => updateCell("type", e.target.value)}
               label="Cell Type"
             >
-              <MenuItem value="TEXT">Text</MenuItem>
-              <MenuItem value="DB_VALUE">DB Value</MenuItem>
-              <MenuItem value="DB_COUNT">DB Count</MenuItem>
-              <MenuItem value="DB_SUM">DB Sum</MenuItem>
-              <MenuItem value="DB_AVG">DB Average</MenuItem>
-              <MenuItem value="DB_MIN">DB Min</MenuItem>
-              <MenuItem value="DB_MAX">DB Max</MenuItem>
-              <MenuItem value="FORMULA">Formula</MenuItem>
+              {getCellTypeOptions().map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
 
@@ -177,33 +219,46 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
             />
           )}
 
-          {(cell.type?.startsWith("DB_")) && (
+          {cell.type?.startsWith("DB_") && (
             <>
-              <TextField
-                label="Table"
+              <Autocomplete
                 size="small"
-                value={cell.source?.table || ""}
-                onChange={(e) => updateCell("source.table", e.target.value)}
-                placeholder="e.g., GL_BALANCE"
+                options={tableConfigs.map((t) => t.tableName)}
+                value={selectedTable || null}
+                onChange={(_, newValue) => {
+                  updateCell("source.table", newValue || "");
+                  updateCell("source.column", "");
+                }}
+                getOptionLabel={(option) => {
+                  const table = tableConfigs.find((t) => t.tableName === option);
+                  return table ? `${table.tableName} (${table.label})` : option;
+                }}
+                renderInput={(params) => <TextField {...params} label="Table" placeholder="Select table..." />}
                 fullWidth
               />
-              <TextField
-                label="Column"
+
+              <Autocomplete
                 size="small"
-                value={cell.source?.column || ""}
-                onChange={(e) => updateCell("source.column", e.target.value)}
-                placeholder="e.g., BALANCE"
+                options={selectableColumns}
+                value={cell.source?.column || null}
+                onChange={(_, newValue) => updateCell("source.column", newValue || "")}
+                disabled={!selectedTable}
+                renderInput={(params) => (
+                  <TextField {...params} label="Column" placeholder={selectedTable ? "Select column..." : "Select table first"} />
+                )}
                 fullWidth
               />
+
               <FilterBuilder
                 filters={cell.source?.filters || {}}
                 onFiltersChange={(filters) => updateCell("source.filters", filters)}
+                tableName={selectedTable}
               />
             </>
           )}
 
           <Divider />
-          
+
           <Typography variant="subtitle2" fontWeight={600} color="text.secondary">
             FORMATTING
           </Typography>
@@ -255,7 +310,8 @@ export const RightPanel = ({ template, onTemplateChange, selectedCell, formulaMo
           <Divider />
 
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-            Click another cell to edit its properties, or use the JSON export to see the complete template structure.
+            Click another cell to edit its properties, or use the JSON export to see the complete
+            template structure.
           </Typography>
         </Box>
       </Box>

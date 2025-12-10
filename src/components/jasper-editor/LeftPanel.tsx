@@ -22,18 +22,16 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import Menu from "@mui/material/Menu";
 import Chip from "@mui/material/Chip";
-import Checkbox from "@mui/material/Checkbox";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import Divider from "@mui/material/Divider";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ViewAgendaIcon from "@mui/icons-material/ViewAgenda";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import TuneIcon from "@mui/icons-material/Tune";
-import FilterListIcon from "@mui/icons-material/FilterList";
 import { AddRowDialog } from "./AddRowDialog";
+import { VariantDialog } from "./VariantDialog";
 
 // Variant interfaces
 interface Param {
@@ -66,11 +64,6 @@ interface LeftPanelProps {
   onTemplateChange: (template: any) => void;
 }
 
-const OPERATORS = ["=", "!=", ">", "<", ">=", "<=", "LIKE", "IN", "NOT IN", "IS NULL", "IS NOT NULL"];
-const PARAM_TYPES = ["STRING", "DATE", "NUMBER", "BOOLEAN"];
-const UI_HINTS = ["text", "date", "number", "select", "multiselect", "checkbox"];
-const SCOPE_TYPES = ["ALL_DB", "TABLE", "DYNAMIC_TABLE"];
-
 export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   const [expanded, setExpanded] = useState<string>("metadata");
   const [deleteDialog, setDeleteDialog] = useState<{
@@ -86,7 +79,11 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   const [insertAtIndex, setInsertAtIndex] = useState<number>(0);
   const [addRowDialog, setAddRowDialog] = useState<{ open: boolean; rowType: string; insertAt?: number }>({ open: false, rowType: "" });
   const [editingColumn, setEditingColumn] = useState<number | null>(null);
-  const [expandedVariant, setExpandedVariant] = useState<string | null>(null);
+  
+  // Variant dialog state
+  const [variantDialogOpen, setVariantDialogOpen] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<Variant | null>(null);
+  const [editingVariantIndex, setEditingVariantIndex] = useState<number | null>(null);
 
   // Variants helpers
   const variants: Variant[] = template.variants || [];
@@ -116,80 +113,35 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     onTemplateChange({ ...template, variants: newVariants });
   };
 
-  const addVariant = () => {
-    const newVariant: Variant = {
-      variantCode: `VARIANT_${Date.now()}`,
-      variantName: "New Variant",
-      description: "",
-      params: [],
-      filterRules: [],
-    };
-    updateVariants([...variants, newVariant]);
-    setExpandedVariant(newVariant.variantCode);
+  const openAddVariantDialog = () => {
+    setEditingVariant(null);
+    setEditingVariantIndex(null);
+    setVariantDialogOpen(true);
   };
 
-  const updateVariant = (index: number, field: keyof Variant, value: any) => {
-    const updated = [...variants];
-    updated[index] = { ...updated[index], [field]: value };
-    updateVariants(updated);
+  const openEditVariantDialog = (variant: Variant, index: number) => {
+    setEditingVariant(variant);
+    setEditingVariantIndex(index);
+    setVariantDialogOpen(true);
+  };
+
+  const handleSaveVariant = (variant: Variant) => {
+    if (editingVariantIndex !== null) {
+      // Update existing variant
+      const updated = [...variants];
+      updated[editingVariantIndex] = variant;
+      updateVariants(updated);
+    } else {
+      // Add new variant
+      updateVariants([...variants, variant]);
+    }
+    setVariantDialogOpen(false);
+    setEditingVariant(null);
+    setEditingVariantIndex(null);
   };
 
   const removeVariant = (index: number) => {
     updateVariants(variants.filter((_, i) => i !== index));
-  };
-
-  const addParam = (variantIndex: number) => {
-    const updated = [...variants];
-    updated[variantIndex].params.push({
-      paramName: `param_${Date.now()}`,
-      label: "New Parameter",
-      paramType: "STRING",
-      required: true,
-      multiValued: false,
-      uiHint: "text",
-    });
-    updateVariants(updated);
-  };
-
-  const updateParam = (variantIndex: number, paramIndex: number, field: keyof Param, value: any) => {
-    const updated = [...variants];
-    updated[variantIndex].params[paramIndex] = {
-      ...updated[variantIndex].params[paramIndex],
-      [field]: value,
-    };
-    updateVariants(updated);
-  };
-
-  const removeParam = (variantIndex: number, paramIndex: number) => {
-    const updated = [...variants];
-    updated[variantIndex].params = updated[variantIndex].params.filter((_, i) => i !== paramIndex);
-    updateVariants(updated);
-  };
-
-  const addFilterRule = (variantIndex: number) => {
-    const updated = [...variants];
-    updated[variantIndex].filterRules.push({
-      scopeType: "ALL_DB",
-      paramName: "",
-      dbColumn: "",
-      operator: "=",
-    });
-    updateVariants(updated);
-  };
-
-  const updateFilterRule = (variantIndex: number, ruleIndex: number, field: keyof FilterRule, value: any) => {
-    const updated = [...variants];
-    updated[variantIndex].filterRules[ruleIndex] = {
-      ...updated[variantIndex].filterRules[ruleIndex],
-      [field]: value,
-    };
-    updateVariants(updated);
-  };
-
-  const removeFilterRule = (variantIndex: number, ruleIndex: number) => {
-    const updated = [...variants];
-    updated[variantIndex].filterRules = updated[variantIndex].filterRules.filter((_, i) => i !== ruleIndex);
-    updateVariants(updated);
   };
 
   const tables = getTableNames();
@@ -337,6 +289,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
         table: "",
         select: [],
         filters: {},
+        columnMappings: [],
       };
       newRow.cells = [];
     }
@@ -893,7 +846,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
           </AccordionDetails>
         </Accordion>
 
-        {/* Variants Accordion */}
+        {/* Variants Accordion - Using Dialog */}
         <Accordion
           expanded={expanded === "variants"}
           onChange={() => setExpanded(expanded === "variants" ? "" : "variants")}
@@ -910,7 +863,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                 variant="outlined"
                 size="small"
                 startIcon={<AddIcon />}
-                onClick={addVariant}
+                onClick={openAddVariantDialog}
                 fullWidth
               >
                 Add Variant
@@ -923,331 +876,138 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                   </Typography>
                 </Box>
               ) : (
-                variants.map((variant, vIndex) => (
-                  <Accordion
-                    key={variant.variantCode}
-                    expanded={expandedVariant === variant.variantCode}
-                    onChange={() => setExpandedVariant(expandedVariant === variant.variantCode ? null : variant.variantCode)}
-                    sx={{ bgcolor: "background.paper" }}
-                  >
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%", pr: 1 }}>
-                        <Typography variant="caption" fontWeight={500} sx={{ flex: 1 }} noWrap>
-                          {variant.variantName}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeVariant(vIndex);
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    </AccordionSummary>
-                    <AccordionDetails sx={{ p: 1.5 }}>
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                        <TextField
-                          label="Variant Code"
-                          size="small"
-                          value={variant.variantCode}
-                          onChange={(e) => updateVariant(vIndex, "variantCode", e.target.value.toUpperCase().replace(/\s/g, "_"))}
-                          fullWidth
-                        />
-                        <TextField
-                          label="Variant Name"
-                          size="small"
-                          value={variant.variantName}
-                          onChange={(e) => updateVariant(vIndex, "variantName", e.target.value)}
-                          fullWidth
-                        />
-                        <TextField
-                          label="Description"
-                          size="small"
-                          multiline
-                          rows={2}
-                          value={variant.description}
-                          onChange={(e) => updateVariant(vIndex, "description", e.target.value)}
-                          fullWidth
-                        />
-
-                        <Divider />
-
-                        {/* Parameters */}
-                        <Box>
-                          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                            <Typography variant="caption" fontWeight={600}>
-                              Parameters ({variant.params.length})
+                <List dense sx={{ bgcolor: "background.paper", borderRadius: 1 }}>
+                  {variants.map((variant, index) => (
+                    <ListItem
+                      key={variant.variantCode}
+                      sx={{
+                        mb: 1,
+                        p: 1.5,
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {variant.variantName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {variant.variantCode}
+                          </Typography>
+                          {variant.description && (
+                            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                              {variant.description}
                             </Typography>
-                            <Button size="small" startIcon={<AddIcon />} onClick={() => addParam(vIndex)}>
-                              Add
-                            </Button>
-                          </Box>
-
-                          {variant.params.map((param, pIndex) => (
-                            <Box
-                              key={pIndex}
-                              sx={{
-                                p: 1,
-                                mb: 1,
-                                bgcolor: "#f5f5f5",
-                                borderRadius: 1,
-                                border: "1px solid #e0e0e0",
-                              }}
-                            >
-                              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                                <Chip label={param.paramName} size="small" color="primary" variant="outlined" sx={{ fontSize: "0.65rem" }} />
-                                <IconButton size="small" onClick={() => removeParam(vIndex, pIndex)}>
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
-
-                              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.5 }}>
-                                <TextField
-                                  label="Param Name"
-                                  size="small"
-                                  value={param.paramName}
-                                  onChange={(e) => updateParam(vIndex, pIndex, "paramName", e.target.value.replace(/\s/g, ""))}
-                                  fullWidth
-                                />
-                                <TextField
-                                  label="Label"
-                                  size="small"
-                                  value={param.label}
-                                  onChange={(e) => updateParam(vIndex, pIndex, "label", e.target.value)}
-                                  fullWidth
-                                />
-                                <FormControl size="small" fullWidth>
-                                  <InputLabel>Type</InputLabel>
-                                  <Select
-                                    value={param.paramType}
-                                    onChange={(e) => updateParam(vIndex, pIndex, "paramType", e.target.value)}
-                                    label="Type"
-                                  >
-                                    {PARAM_TYPES.map((t) => (
-                                      <MenuItem key={t} value={t}>{t}</MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-                                <FormControl size="small" fullWidth>
-                                  <InputLabel>UI Hint</InputLabel>
-                                  <Select
-                                    value={param.uiHint}
-                                    onChange={(e) => updateParam(vIndex, pIndex, "uiHint", e.target.value)}
-                                    label="UI Hint"
-                                  >
-                                    {UI_HINTS.map((h) => (
-                                      <MenuItem key={h} value={h}>{h}</MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-                              </Box>
-
-                              <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
-                                <FormControlLabel
-                                  control={
-                                    <Checkbox
-                                      checked={param.required}
-                                      onChange={(e) => updateParam(vIndex, pIndex, "required", e.target.checked)}
-                                      size="small"
-                                    />
-                                  }
-                                  label={<Typography variant="caption">Required</Typography>}
-                                />
-                                <FormControlLabel
-                                  control={
-                                    <Checkbox
-                                      checked={param.multiValued}
-                                      onChange={(e) => updateParam(vIndex, pIndex, "multiValued", e.target.checked)}
-                                      size="small"
-                                    />
-                                  }
-                                  label={<Typography variant="caption">Multi</Typography>}
-                                />
-                              </Box>
-                            </Box>
-                          ))}
+                          )}
                         </Box>
-
-                        <Divider />
-
-                        {/* Filter Rules */}
-                        <Box>
-                          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                              <FilterListIcon fontSize="small" />
-                              <Typography variant="caption" fontWeight={600}>
-                                Filter Rules ({variant.filterRules.length})
-                              </Typography>
-                            </Box>
-                            <Button size="small" startIcon={<AddIcon />} onClick={() => addFilterRule(vIndex)}>
-                              Add
-                            </Button>
-                          </Box>
-
-                          {variant.filterRules.map((rule, rIndex) => (
-                            <Box
-                              key={rIndex}
-                              sx={{
-                                p: 1,
-                                mb: 1,
-                                bgcolor: "#f5f5f5",
-                                borderRadius: 1,
-                                border: "1px solid #e0e0e0",
-                              }}
-                            >
-                              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                                <Chip
-                                  label={rule.scopeType}
-                                  size="small"
-                                  color={rule.scopeType === "ALL_DB" ? "success" : rule.scopeType === "TABLE" ? "primary" : "warning"}
-                                  variant="outlined"
-                                  sx={{ fontSize: "0.6rem" }}
-                                />
-                                <IconButton size="small" onClick={() => removeFilterRule(vIndex, rIndex)}>
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
-
-                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                                <FormControl size="small" fullWidth>
-                                  <InputLabel>Scope Type</InputLabel>
-                                  <Select
-                                    value={rule.scopeType}
-                                    onChange={(e) => updateFilterRule(vIndex, rIndex, "scopeType", e.target.value)}
-                                    label="Scope Type"
-                                  >
-                                    {SCOPE_TYPES.map((s) => (
-                                      <MenuItem key={s} value={s}>{s}</MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-
-                                {rule.scopeType === "TABLE" && (
-                                  <FormControl size="small" fullWidth>
-                                    <InputLabel>Table</InputLabel>
-                                    <Select
-                                      value={rule.scopeValue || ""}
-                                      onChange={(e) => updateFilterRule(vIndex, rIndex, "scopeValue", e.target.value)}
-                                      label="Table"
-                                    >
-                                      {tables.map((t) => (
-                                        <MenuItem key={t} value={t}>{t}</MenuItem>
-                                      ))}
-                                    </Select>
-                                  </FormControl>
-                                )}
-
-                                {rule.scopeType === "DYNAMIC_TABLE" && (
-                                  <FormControl size="small" fullWidth>
-                                    <InputLabel>Dynamic Row</InputLabel>
-                                    <Select
-                                      value={rule.scopeValue || ""}
-                                      onChange={(e) => updateFilterRule(vIndex, rIndex, "scopeValue", e.target.value)}
-                                      label="Dynamic Row"
-                                    >
-                                      {dynamicRowIds.map((id: string) => (
-                                        <MenuItem key={id} value={id}>{id}</MenuItem>
-                                      ))}
-                                    </Select>
-                                  </FormControl>
-                                )}
-
-                                <FormControl size="small" fullWidth>
-                                  <InputLabel>Parameter</InputLabel>
-                                  <Select
-                                    value={rule.paramName}
-                                    onChange={(e) => updateFilterRule(vIndex, rIndex, "paramName", e.target.value)}
-                                    label="Parameter"
-                                  >
-                                    {variant.params.map((p) => (
-                                      <MenuItem key={p.paramName} value={p.paramName}>{p.paramName}</MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-
-                                <TextField
-                                  label="DB Column"
-                                  size="small"
-                                  value={rule.dbColumn}
-                                  onChange={(e) => updateFilterRule(vIndex, rIndex, "dbColumn", e.target.value)}
-                                  fullWidth
-                                />
-
-                                <FormControl size="small" fullWidth>
-                                  <InputLabel>Operator</InputLabel>
-                                  <Select
-                                    value={rule.operator}
-                                    onChange={(e) => updateFilterRule(vIndex, rIndex, "operator", e.target.value)}
-                                    label="Operator"
-                                  >
-                                    {OPERATORS.map((op) => (
-                                      <MenuItem key={op} value={op}>{op}</MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-                              </Box>
-                            </Box>
-                          ))}
+                        <Box sx={{ display: "flex", gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => openEditVariantDialog(variant, index)}
+                            title="Edit variant"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => removeVariant(index)}
+                            title="Delete variant"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
                         </Box>
                       </Box>
-                    </AccordionDetails>
-                  </Accordion>
-                ))
+                      <Box sx={{ display: "flex", gap: 0.5, mt: 1, flexWrap: "wrap" }}>
+                        <Chip
+                          label={`${variant.params.length} params`}
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                        />
+                        <Chip
+                          label={`${variant.filterRules.length} filters`}
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                        />
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
               )}
             </Box>
           </AccordionDetails>
         </Accordion>
-
-        {/* Insert Row Menu */}
-        <Menu
-          anchorEl={insertMenuAnchor}
-          open={Boolean(insertMenuAnchor)}
-          onClose={() => setInsertMenuAnchor(null)}
-        >
-          <MenuItem onClick={() => openAddRowDialog("HEADER", insertAtIndex)}>Header</MenuItem>
-          <MenuItem onClick={() => openAddRowDialog("DATA", insertAtIndex)}>Data</MenuItem>
-          <MenuItem onClick={() => openAddRowDialog("SEPARATOR", insertAtIndex)}>Separator</MenuItem>
-          <MenuItem onClick={() => openAddRowDialog("DYNAMIC", insertAtIndex)}>Dynamic</MenuItem>
-          <MenuItem onClick={() => openAddRowDialog("FOOTER", insertAtIndex)}>Footer</MenuItem>
-        </Menu>
-
-        <AddRowDialog
-          open={addRowDialog.open}
-          rowType={addRowDialog.rowType}
-          existingRowIds={existingRowIds}
-          onClose={() => setAddRowDialog({ open: false, rowType: "" })}
-          onConfirm={addRow}
-        />
       </Box>
 
+      {/* Insert Row Menu */}
+      <Menu
+        anchorEl={insertMenuAnchor}
+        open={Boolean(insertMenuAnchor)}
+        onClose={() => setInsertMenuAnchor(null)}
+      >
+        <MenuItem onClick={() => openAddRowDialog("HEADER", insertAtIndex)}>Header</MenuItem>
+        <MenuItem onClick={() => openAddRowDialog("DATA", insertAtIndex)}>Data</MenuItem>
+        <MenuItem onClick={() => openAddRowDialog("SEPARATOR", insertAtIndex)}>Separator</MenuItem>
+        <MenuItem onClick={() => openAddRowDialog("DYNAMIC", insertAtIndex)}>Dynamic</MenuItem>
+        <MenuItem onClick={() => openAddRowDialog("FOOTER", insertAtIndex)}>Footer</MenuItem>
+      </Menu>
+
+      {/* Add Row Dialog */}
+      <AddRowDialog
+        open={addRowDialog.open}
+        rowType={addRowDialog.rowType}
+        existingRowIds={existingRowIds}
+        onClose={() => setAddRowDialog({ open: false, rowType: "" })}
+        onConfirm={addRow}
+      />
+
+      {/* Variant Dialog */}
+      <VariantDialog
+        open={variantDialogOpen}
+        variant={editingVariant}
+        tableNames={tables}
+        dynamicRowIds={dynamicRowIds}
+        onClose={() => {
+          setVariantDialogOpen(false);
+          setEditingVariant(null);
+          setEditingVariantIndex(null);
+        }}
+        onSave={handleSaveVariant}
+      />
+
+      {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
-        <DialogTitle>Warning: References Found</DialogTitle>
+        <DialogTitle>Confirm Deletion</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            This {deleteDialog?.type} is referenced in the following formulas:
+            {deleteDialog?.type === "row"
+              ? `This row is referenced in the following formulas:`
+              : `This column is referenced in the following formulas:`}
           </DialogContentText>
-          <List dense>
-            {deleteDialog?.references.map((ref, idx) => (
-              <ListItem key={idx}>
-                <ListItemText primary={ref} />
-              </ListItem>
+          <Box sx={{ mt: 1, maxHeight: 200, overflow: "auto" }}>
+            {deleteDialog?.references.map((ref, i) => (
+              <Typography key={i} variant="body2" color="error">
+                • {ref}
+              </Typography>
             ))}
-          </List>
+          </Box>
           <DialogContentText sx={{ mt: 2 }}>
-            Deleting will remove these references from the formulas. Do you want
-            to continue?
+            Deleting this will remove these references from the formulas. Continue?
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialog(null)}>Cancel</Button>
           <Button
             onClick={() => {
-              if (deleteDialog?.type === "column") {
-                confirmRemoveColumn(deleteDialog.colId, deleteDialog.index);
-              } else {
+              if (deleteDialog?.type === "row") {
                 confirmRemoveRow(deleteDialog.rowId, deleteDialog.index);
+              } else if (deleteDialog?.type === "column") {
+                confirmRemoveColumn(deleteDialog.colId, deleteDialog.index);
               }
             }}
             color="error"

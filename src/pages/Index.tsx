@@ -126,7 +126,6 @@ const Index = () => {
             <LeftPanel 
               template={template} 
               onTemplateChange={handleTemplateChange}
-              onCellSelectionClear={() => setSelectedCell(null)}
             />
 
             <ReportCanvas

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -27,41 +28,75 @@ export const DynamicRowConfig = ({
   templateColumns,
   onConfigChange,
 }: DynamicRowConfigProps) => {
-  const { tableConfigs, getSelectableColumns } = useConfig();
+  const { tableConfigs, getSelectableColumns, loading } = useConfig();
 
-  const updateConfig = (field: string, value: any) => {
-    onConfigChange({ ...dynamicConfig, [field]: value });
+  // Local state for selected table to handle controlled Autocomplete
+  const [selectedTableValue, setSelectedTableValue] = useState<string | null>(null);
+
+  // Sync local state with dynamicConfig
+  useEffect(() => {
+    setSelectedTableValue(dynamicConfig.table || null);
+  }, [dynamicConfig.table]);
+
+  const updateConfig = (updates: Record<string, any>) => {
+    onConfigChange({ ...dynamicConfig, ...updates });
   };
 
-  const selectedTable = dynamicConfig.table || "";
-  const selectableColumns = selectedTable ? getSelectableColumns(selectedTable) : [];
+  const selectableColumns = selectedTableValue ? getSelectableColumns(selectedTableValue) : [];
 
   // Get current column mappings or initialize with empty mappings
-  const columnMappings: ColumnMapping[] = dynamicConfig.columnMappings || 
-    templateColumns.map(col => ({ templateColumnId: col.id, dbColumn: "" }));
+  const getColumnMappings = (): ColumnMapping[] => {
+    if (dynamicConfig.columnMappings && Array.isArray(dynamicConfig.columnMappings)) {
+      // Ensure all template columns have mappings
+      const existingMappings = dynamicConfig.columnMappings as ColumnMapping[];
+      const existingIds = existingMappings.map(m => m.templateColumnId);
+      
+      const newMappings = [...existingMappings];
+      templateColumns.forEach(col => {
+        if (!existingIds.includes(col.id)) {
+          newMappings.push({ templateColumnId: col.id, dbColumn: "" });
+        }
+      });
+      
+      return newMappings;
+    }
+    return templateColumns.map(col => ({ templateColumnId: col.id, dbColumn: "" }));
+  };
 
-  const updateColumnMapping = (templateColumnId: string, dbColumn: string) => {
+  const columnMappings = getColumnMappings();
+
+  const handleTableChange = (newTableName: string | null) => {
+    setSelectedTableValue(newTableName);
+    
+    // Reset mappings when table changes
+    const resetMappings = templateColumns.map(col => ({ 
+      templateColumnId: col.id, 
+      dbColumn: "" 
+    }));
+    
+    updateConfig({
+      table: newTableName || "",
+      columnMappings: resetMappings,
+      select: [],
+    });
+  };
+
+  const handleColumnMappingChange = (templateColumnId: string, dbColumn: string | null) => {
     const newMappings = columnMappings.map(mapping =>
       mapping.templateColumnId === templateColumnId
-        ? { ...mapping, dbColumn }
+        ? { ...mapping, dbColumn: dbColumn || "" }
         : mapping
     );
-    
-    // Ensure all template columns have mappings
-    const existingIds = newMappings.map(m => m.templateColumnId);
-    templateColumns.forEach(col => {
-      if (!existingIds.includes(col.id)) {
-        newMappings.push({ templateColumnId: col.id, dbColumn: "" });
-      }
-    });
 
-    updateConfig("columnMappings", newMappings);
-    
-    // Also update the select array for backwards compatibility
+    // Update the select array for backwards compatibility
     const selectedDbColumns = newMappings
       .filter(m => m.dbColumn)
       .map(m => m.dbColumn);
-    updateConfig("select", selectedDbColumns);
+
+    updateConfig({
+      columnMappings: newMappings,
+      select: selectedDbColumns,
+    });
   };
 
   const getDbColumnForTemplate = (templateColumnId: string): string => {
@@ -71,7 +106,13 @@ export const DynamicRowConfig = ({
 
   // Validation
   const mappedColumnsCount = columnMappings.filter(m => m.dbColumn).length;
-  const hasValidation = templateColumns.length > 0 && mappedColumnsCount === 0;
+  const hasValidationError = selectedTableValue && templateColumns.length > 0 && mappedColumnsCount === 0;
+
+  // Get table options with labels
+  const tableOptions = tableConfigs.map(t => ({
+    value: t.tableName,
+    label: `${t.tableName} (${t.label})`,
+  }));
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -83,7 +124,7 @@ export const DynamicRowConfig = ({
         <InputLabel>Type</InputLabel>
         <Select
           value={dynamicConfig.type || "DB_LIST"}
-          onChange={(e) => updateConfig("type", e.target.value)}
+          onChange={(e) => updateConfig({ type: e.target.value })}
           label="Type"
         >
           <MenuItem value="DB_LIST">Database List</MenuItem>
@@ -92,28 +133,23 @@ export const DynamicRowConfig = ({
 
       <Autocomplete
         size="small"
-        options={tableConfigs.map(t => t.tableName)}
-        value={selectedTable || null}
-        onChange={(_, newValue) => {
-          updateConfig("table", newValue || "");
-          // Reset column mappings when table changes
-          updateConfig("columnMappings", templateColumns.map(col => ({ 
-            templateColumnId: col.id, 
-            dbColumn: "" 
-          })));
-          updateConfig("select", []);
-        }}
-        getOptionLabel={(option) => {
-          const table = tableConfigs.find(t => t.tableName === option);
-          return table ? `${table.tableName} (${table.label})` : option;
-        }}
+        options={tableOptions}
+        value={tableOptions.find(opt => opt.value === selectedTableValue) || null}
+        onChange={(_, newValue) => handleTableChange(newValue?.value || null)}
+        getOptionLabel={(option) => option.label}
+        isOptionEqualToValue={(option, value) => option.value === value.value}
+        loading={loading}
         renderInput={(params) => (
-          <TextField {...params} label="Table" placeholder="Select table..." />
+          <TextField 
+            {...params} 
+            label="Table" 
+            placeholder="Select table..."
+          />
         )}
         fullWidth
       />
 
-      {selectedTable && (
+      {selectedTableValue && (
         <>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: "#f5f5f5" }}>
             <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: "block" }}>
@@ -124,53 +160,67 @@ export const DynamicRowConfig = ({
             </Typography>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              {templateColumns.map((templateCol) => (
-                <Box
-                  key={templateCol.id}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                    p: 1,
-                    bgcolor: "background.paper",
-                    borderRadius: 1,
-                    border: "1px solid #e0e0e0",
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 120 }}>
-                    <Typography variant="body2" fontWeight={500}>
-                      {templateCol.name}
+              {templateColumns.map((templateCol) => {
+                const currentDbColumn = getDbColumnForTemplate(templateCol.id);
+                const columnOptions = [
+                  { value: "", label: "(Empty - No data)" },
+                  ...selectableColumns.map(col => ({ value: col, label: col }))
+                ];
+                const currentOption = columnOptions.find(opt => opt.value === currentDbColumn) || null;
+
+                return (
+                  <Box
+                    key={templateCol.id}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 2,
+                      p: 1,
+                      bgcolor: "background.paper",
+                      borderRadius: 1,
+                      border: "1px solid #e0e0e0",
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 120 }}>
+                      <Typography variant="body2" fontWeight={500}>
+                        {templateCol.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {templateCol.id}
+                      </Typography>
+                    </Box>
+
+                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                      →
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {templateCol.id}
-                    </Typography>
+
+                    <Autocomplete
+                      size="small"
+                      sx={{ flex: 1, minWidth: 150 }}
+                      options={columnOptions}
+                      value={currentOption}
+                      onChange={(_, newValue) => handleColumnMappingChange(templateCol.id, newValue?.value || "")}
+                      getOptionLabel={(option) => option.label}
+                      isOptionEqualToValue={(option, value) => option.value === value.value}
+                      renderInput={(params) => (
+                        <TextField {...params} placeholder="Select DB column or leave empty" />
+                      )}
+                      renderOption={(props, option) => (
+                        <li {...props} key={option.value}>
+                          {option.value === "" ? (
+                            <em style={{ color: "#999" }}>Empty - No data</em>
+                          ) : (
+                            option.label
+                          )}
+                        </li>
+                      )}
+                    />
                   </Box>
-
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                    →
-                  </Typography>
-
-                  <Autocomplete
-                    size="small"
-                    sx={{ flex: 1, minWidth: 150 }}
-                    options={["", ...selectableColumns]}
-                    value={getDbColumnForTemplate(templateCol.id)}
-                    onChange={(_, newValue) => updateColumnMapping(templateCol.id, newValue || "")}
-                    getOptionLabel={(option) => option || "(Empty - No data)"}
-                    renderInput={(params) => (
-                      <TextField {...params} placeholder="Select DB column or leave empty" />
-                    )}
-                    renderOption={(props, option) => (
-                      <li {...props}>
-                        {option || <em style={{ color: "#999" }}>Empty - No data</em>}
-                      </li>
-                    )}
-                  />
-                </Box>
-              ))}
+                );
+              })}
             </Box>
 
-            {hasValidation && (
+            {hasValidationError && (
               <Alert severity="warning" sx={{ mt: 2 }}>
                 Please map at least one column to fetch data.
               </Alert>
@@ -185,15 +235,15 @@ export const DynamicRowConfig = ({
 
           <FilterBuilder
             filters={dynamicConfig.filters || {}}
-            onFiltersChange={(filters) => updateConfig("filters", filters)}
-            tableName={selectedTable}
+            onFiltersChange={(filters) => updateConfig({ filters })}
+            tableName={selectedTableValue}
           />
 
           <TextField
             label="Order By"
             size="small"
             value={dynamicConfig.orderby || ""}
-            onChange={(e) => updateConfig("orderby", e.target.value)}
+            onChange={(e) => updateConfig({ orderby: e.target.value })}
             placeholder="e.g., BALANCE_DATE DESC"
             fullWidth
           />
@@ -203,7 +253,7 @@ export const DynamicRowConfig = ({
             type="number"
             size="small"
             value={dynamicConfig.limit || ""}
-            onChange={(e) => updateConfig("limit", parseInt(e.target.value) || "")}
+            onChange={(e) => updateConfig({ limit: parseInt(e.target.value) || "" })}
             placeholder="e.g., 100"
             fullWidth
           />

@@ -8,7 +8,11 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Autocomplete from "@mui/material/Autocomplete";
 import Alert from "@mui/material/Alert";
-import Paper from "@mui/material/Paper";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import Chip from "@mui/material/Chip";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { FilterBuilder } from "./FilterBuilder";
 import { useConfig } from "@/contexts/ConfigContext";
 
@@ -29,11 +33,9 @@ export const DynamicRowConfig = ({
   onConfigChange,
 }: DynamicRowConfigProps) => {
   const { tableConfigs, getSelectableColumns, loading } = useConfig();
-
-  // Local state for selected table to handle controlled Autocomplete
   const [selectedTableValue, setSelectedTableValue] = useState<string | null>(null);
+  const [mappingsExpanded, setMappingsExpanded] = useState(false);
 
-  // Sync local state with dynamicConfig
   useEffect(() => {
     setSelectedTableValue(dynamicConfig.table || null);
   }, [dynamicConfig.table]);
@@ -44,10 +46,8 @@ export const DynamicRowConfig = ({
 
   const selectableColumns = selectedTableValue ? getSelectableColumns(selectedTableValue) : [];
 
-  // Get current column mappings or initialize with empty mappings
   const getColumnMappings = (): ColumnMapping[] => {
     if (dynamicConfig.columnMappings && Array.isArray(dynamicConfig.columnMappings)) {
-      // Ensure all template columns have mappings
       const existingMappings = dynamicConfig.columnMappings as ColumnMapping[];
       const existingIds = existingMappings.map(m => m.templateColumnId);
       
@@ -68,7 +68,6 @@ export const DynamicRowConfig = ({
   const handleTableChange = (newTableName: string | null) => {
     setSelectedTableValue(newTableName);
     
-    // Reset mappings when table changes
     const resetMappings = templateColumns.map(col => ({ 
       templateColumnId: col.id, 
       dbColumn: "" 
@@ -88,7 +87,6 @@ export const DynamicRowConfig = ({
         : mapping
     );
 
-    // Update the select array for backwards compatibility
     const selectedDbColumns = newMappings
       .filter(m => m.dbColumn)
       .map(m => m.dbColumn);
@@ -104,11 +102,9 @@ export const DynamicRowConfig = ({
     return mapping?.dbColumn || "";
   };
 
-  // Validation
   const mappedColumnsCount = columnMappings.filter(m => m.dbColumn).length;
   const hasValidationError = selectedTableValue && templateColumns.length > 0 && mappedColumnsCount === 0;
 
-  // Get table options with labels
   const tableOptions = tableConfigs.map(t => ({
     value: t.tableName,
     label: `${t.tableName} (${t.label})`,
@@ -151,87 +147,90 @@ export const DynamicRowConfig = ({
 
       {selectedTableValue && (
         <>
-          <Paper variant="outlined" sx={{ p: 2, bgcolor: "#f5f5f5" }}>
-            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: "block" }}>
-              COLUMN MAPPINGS
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-              Map each template column to a database column. Leave empty for columns that should not have data.
-            </Typography>
-
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              {templateColumns.map((templateCol) => {
-                const currentDbColumn = getDbColumnForTemplate(templateCol.id);
-                const columnOptions = [
-                  { value: "", label: "(Empty - No data)" },
-                  ...selectableColumns.map(col => ({ value: col, label: col }))
-                ];
-                const currentOption = columnOptions.find(opt => opt.value === currentDbColumn) || null;
-
-                return (
-                  <Box
-                    key={templateCol.id}
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 2,
-                      p: 1,
-                      bgcolor: "background.paper",
-                      borderRadius: 1,
-                      border: "1px solid #e0e0e0",
-                    }}
-                  >
-                    <Box sx={{ flex: 1, minWidth: 120 }}>
-                      <Typography variant="body2" fontWeight={500}>
-                        {templateCol.name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {templateCol.id}
-                      </Typography>
-                    </Box>
-
-                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                      →
-                    </Typography>
-
-                    <Autocomplete
-                      size="small"
-                      sx={{ flex: 1, minWidth: 150 }}
-                      options={columnOptions}
-                      value={currentOption}
-                      onChange={(_, newValue) => handleColumnMappingChange(templateCol.id, newValue?.value || "")}
-                      getOptionLabel={(option) => option.label}
-                      isOptionEqualToValue={(option, value) => option.value === value.value}
-                      renderInput={(params) => (
-                        <TextField {...params} placeholder="Select DB column or leave empty" />
-                      )}
-                      renderOption={(props, option) => (
-                        <li {...props} key={option.value}>
-                          {option.value === "" ? (
-                            <em style={{ color: "#999" }}>Empty - No data</em>
-                          ) : (
-                            option.label
-                          )}
-                        </li>
-                      )}
-                    />
-                  </Box>
-                );
-              })}
-            </Box>
-
-            {hasValidationError && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                Please map at least one column to fetch data.
-              </Alert>
-            )}
-
-            <Box sx={{ mt: 2, p: 1, bgcolor: "#e3f2fd", borderRadius: 1 }}>
-              <Typography variant="caption" color="primary.dark">
-                <strong>Mapped:</strong> {mappedColumnsCount} of {templateColumns.length} columns
+          {/* Collapsible Column Mappings */}
+          <Accordion 
+            expanded={mappingsExpanded} 
+            onChange={() => setMappingsExpanded(!mappingsExpanded)}
+            sx={{ 
+              bgcolor: "#f5f5f5",
+              '&:before': { display: 'none' },
+              boxShadow: 'none',
+              border: '1px solid #e0e0e0',
+            }}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                <Typography variant="caption" fontWeight={600} color="text.secondary">
+                  COLUMN MAPPINGS
+                </Typography>
+                <Chip 
+                  label={`${mappedColumnsCount}/${templateColumns.length}`} 
+                  size="small" 
+                  color={mappedColumnsCount > 0 ? "success" : "default"}
+                  sx={{ height: 20, fontSize: '0.7rem' }}
+                />
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: "block" }}>
+                Map template columns to database columns
               </Typography>
-            </Box>
-          </Paper>
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {templateColumns.map((templateCol) => {
+                  const currentDbColumn = getDbColumnForTemplate(templateCol.id);
+                  const columnOptions = [
+                    { value: "", label: "(Empty)" },
+                    ...selectableColumns.map(col => ({ value: col, label: col }))
+                  ];
+                  const currentOption = columnOptions.find(opt => opt.value === currentDbColumn) || columnOptions[0];
+
+                  return (
+                    <Box
+                      key={templateCol.id}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 0.75,
+                        bgcolor: "background.paper",
+                        borderRadius: 1,
+                        border: "1px solid #e0e0e0",
+                      }}
+                    >
+                      <Box sx={{ flex: '0 0 90px', overflow: 'hidden' }}>
+                        <Typography variant="caption" fontWeight={500} noWrap title={templateCol.name}>
+                          {templateCol.name}
+                        </Typography>
+                      </Box>
+
+                      <Typography variant="caption" color="text.secondary">→</Typography>
+
+                      <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+                        <Select
+                          value={currentOption.value}
+                          onChange={(e) => handleColumnMappingChange(templateCol.id, e.target.value || "")}
+                          sx={{ fontSize: '0.75rem' }}
+                        >
+                          {columnOptions.map(opt => (
+                            <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: '0.75rem' }}>
+                              {opt.value === "" ? <em>Empty</em> : opt.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  );
+                })}
+              </Box>
+
+              {hasValidationError && (
+                <Alert severity="warning" sx={{ mt: 1.5, py: 0.5 }}>
+                  Map at least one column
+                </Alert>
+              )}
+            </AccordionDetails>
+          </Accordion>
 
           <FilterBuilder
             filters={dynamicConfig.filters || {}}
@@ -260,11 +259,9 @@ export const DynamicRowConfig = ({
         </>
       )}
 
-      <Box sx={{ p: 1.5, bgcolor: "#e3f2fd", borderRadius: 1 }}>
+      <Box sx={{ p: 1, bgcolor: "#e3f2fd", borderRadius: 1 }}>
         <Typography variant="caption" color="primary.dark">
-          <strong>Note:</strong> Dynamic rows will fetch data from the database and generate
-          multiple rows based on the query results. Each row will populate cells based on the
-          column mappings you define above.
+          <strong>Note:</strong> Dynamic rows generate multiple rows from query results.
         </Typography>
       </Box>
     </Box>

@@ -58,6 +58,15 @@ export interface Template {
   };
 }
 
+export interface SaveTemplatePayload {
+  template: {
+    templateMeta: any;
+    reportMeta: any;
+    reportData: any;
+  };
+  variants: any[];
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/F1";
 
 // Fetch table configurations
@@ -91,14 +100,14 @@ export const fetchTemplate = async (
 
 // Save template
 export const saveTemplate = async (
-  template: Template
+  payload: SaveTemplatePayload
 ): Promise<{ success: boolean; templateId?: string; error?: string }> => {
   try {
-    console.log("template in payload ::", template);
+    console.log("template in payload ::", payload);
     const response = await fetch(`${API_BASE_URL}/api/templates/save`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify( template ),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) throw new Error("Failed to save template");

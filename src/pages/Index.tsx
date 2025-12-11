@@ -30,20 +30,25 @@ const Index = () => {
   const [template, setTemplate] = useState<any>({
     templateMeta: {
       templateId: "",
-      version: "v1",
+      version: 1,
       pageSize: "A4",
       pageOrientation: "portrait",
     },
     reportMeta: {
       reportName: "",
       reportId: "",
-      extras: [{ name: "Report Date", value: new Date().toISOString().split("T")[0] }],
+      extras: [
+        { name: "Report Date", value: new Date().toISOString().split("T")[0] },
+      ],
     },
     reportData: { columns: [], rows: [] },
     variants: [],
   });
 
-  const [selectedCell, setSelectedCell] = useState<{ rowIndex: number; cellIndex: number } | null>(null);
+  const [selectedCell, setSelectedCell] = useState<{
+    rowIndex: number;
+    cellIndex: number;
+  } | null>(null);
   const [formulaMode, setFormulaMode] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
@@ -51,46 +56,86 @@ const Index = () => {
 
   const handleExportJSON = () => {
     const exportData = { template, variants: template.variants || [] };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `${template.reportMeta?.reportName || "report"}-template.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast({ title: "Template exported", description: "Your template has been downloaded as JSON" });
+    toast({
+      title: "Template exported",
+      description: "Your template has been downloaded as JSON",
+    });
   };
 
   const handleSaveTemplate = async () => {
     setSaving(true);
-    const result = await saveTemplate(template);
+    const payload = {
+      template: {
+        templateMeta: template.templateMeta,
+        reportMeta: template.reportMeta,
+        reportData: template.reportData,
+      },
+      variants: template.variants,
+    };
+    const result = await saveTemplate(payload);
     setSaving(false);
-    
+
     if (result.success) {
       setTemplateSaved(true);
       if (result.templateId) {
-        setTemplate({ ...template, templateMeta: { ...template.templateMeta, templateId: result.templateId } });
+        setTemplate({
+          ...template,
+          templateMeta: {
+            ...template.templateMeta,
+            templateId: result.templateId,
+          },
+        });
       }
-      toast({ title: "Template saved", description: "Your template has been saved successfully" });
+      toast({
+        title: "Template saved",
+        description: "Your template has been saved successfully",
+      });
     } else {
-      toast({ title: "Save failed", description: result.error || "Failed to save template", variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: result.error || "Failed to save template",
+        variant: "destructive",
+      });
     }
   };
 
   const handleSaveVariants = async () => {
     if (!templateSaved && !template.templateMeta.templateId) {
-      toast({ title: "Save template first", description: "Please save the template before saving variants", variant: "destructive" });
+      toast({
+        title: "Save template first",
+        description: "Please save the template before saving variants",
+        variant: "destructive",
+      });
       return;
     }
-    
+
     setSaving(true);
-    const result = await saveVariants(template.templateMeta.templateId, template.variants || []);
+    const result = await saveVariants(
+      template.templateMeta.templateId,
+      template.variants || []
+    );
     setSaving(false);
-    
+
     if (result.success) {
-      toast({ title: "Variants saved", description: "Your variants have been saved successfully" });
+      toast({
+        title: "Variants saved",
+        description: "Your variants have been saved successfully",
+      });
     } else {
-      toast({ title: "Save failed", description: result.error || "Failed to save variants", variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: result.error || "Failed to save variants",
+        variant: "destructive",
+      });
     }
   };
 
@@ -98,7 +143,10 @@ const Index = () => {
     setTemplate({ ...data.template, variants: data.variants || [] });
     setSelectedCell(null);
     setTemplateSaved(false);
-    toast({ title: "Template imported", description: "Template loaded successfully" });
+    toast({
+      title: "Template imported",
+      description: "Template loaded successfully",
+    });
   };
 
   // Update selected cell when rows are reordered
@@ -110,7 +158,14 @@ const Index = () => {
     <ConfigProvider>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            height: "100vh",
+            overflow: "hidden",
+          }}
+        >
           <TopToolbar
             onExport={handleExportJSON}
             onSave={handleSaveTemplate}
@@ -123,8 +178,8 @@ const Index = () => {
           />
 
           <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-            <LeftPanel 
-              template={template} 
+            <LeftPanel
+              template={template}
               onTemplateChange={handleTemplateChange}
             />
 

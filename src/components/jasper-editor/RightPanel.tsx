@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
@@ -11,6 +12,7 @@ import Checkbox from "@mui/material/Checkbox";
 import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
 import Autocomplete from "@mui/material/Autocomplete";
+import Alert from "@mui/material/Alert";
 import { FormulaBuilder } from "./FormulaBuilder";
 import { DynamicRowConfig } from "./DynamicRowConfig";
 import { FilterBuilder } from "./FilterBuilder";
@@ -32,6 +34,7 @@ export const RightPanel = ({
   onFormulaModeChange,
 }: RightPanelProps) => {
   const { tableConfigs, getSelectableColumns, getAllowedAggFuncs } = useConfig();
+  const [cellTypeWarning, setCellTypeWarning] = useState<string | null>(null);
 
   const updateCell = (field: string, value: any) => {
     if (!selectedCell) return;
@@ -54,6 +57,11 @@ export const RightPanel = ({
 
     onTemplateChange(newTemplate);
   };
+
+  // Clear warning when cell selection changes
+  useEffect(() => {
+    setCellTypeWarning(null);
+  }, [selectedCell]);
 
   if (!selectedCell) {
     return (
@@ -82,6 +90,7 @@ export const RightPanel = ({
 
   const row = template.reportData.rows[selectedCell.rowIndex];
   const cell = row?.cells?.[selectedCell.cellIndex];
+  const column = template.reportData.columns[selectedCell.cellIndex];
   const templateColumns = template.reportData.columns.map((col: any) => ({
     id: col.id,
     name: col.name,
@@ -124,6 +133,48 @@ export const RightPanel = ({
 
   const selectedTable = cell.source?.table || "";
   const selectableColumns = selectedTable ? getSelectableColumns(selectedTable) : [];
+
+  // Check if selected aggregate function is allowed for the column
+  const validateCellTypeForColumn = (cellType: string, table: string, column: string) => {
+    if (!table || !column) return true;
+    if (!cellType.startsWith("DB_") || cellType === "DB_VALUE") return true;
+    
+    const aggFunc = cellType.replace("DB_", "");
+    const allowedFuncs = getAllowedAggFuncs(table, column);
+    return allowedFuncs.includes(aggFunc);
+  };
+
+  // Handle cell type change with validation
+  const handleCellTypeChange = (newType: string) => {
+    setCellTypeWarning(null);
+    
+    // If changing to an aggregate type, check if it's allowed
+    if (newType.startsWith("DB_") && newType !== "DB_VALUE" && selectedTable && cell.source?.column) {
+      const isAllowed = validateCellTypeForColumn(newType, selectedTable, cell.source.column);
+      if (!isAllowed) {
+        setCellTypeWarning(`${newType} is not supported for column "${cell.source.column}". Please select a different column or cell type.`);
+      }
+    }
+    
+    updateCell("type", newType);
+  };
+
+  // Handle column change and validate current cell type
+  const handleColumnChange = (newColumn: string) => {
+    updateCell("source.column", newColumn);
+    
+    // Check if current cell type is still valid
+    const currentType = cell.type;
+    if (currentType && currentType.startsWith("DB_") && currentType !== "DB_VALUE" && selectedTable && newColumn) {
+      const isAllowed = validateCellTypeForColumn(currentType, selectedTable, newColumn);
+      if (!isAllowed) {
+        setCellTypeWarning(`${currentType} is not supported for column "${newColumn}". Cell type has been reset to DB_VALUE.`);
+        updateCell("type", "DB_VALUE");
+      } else {
+        setCellTypeWarning(null);
+      }
+    }
+  };
 
   // Get allowed cell types based on selected column's aggFuncs
   const getCellTypeOptions = () => {
@@ -171,7 +222,7 @@ export const RightPanel = ({
             CELL PROPERTIES
           </Typography>
           <Chip
-            label={`Row ${selectedCell.rowIndex + 1}, Cell ${selectedCell.cellIndex + 1}`}
+            label={`R${selectedCell.rowIndex + 1}C${selectedCell.cellIndex + 1}`}
             size="small"
             sx={{ fontSize: "0.7rem" }}
           />
@@ -182,7 +233,7 @@ export const RightPanel = ({
             <InputLabel>Cell Type</InputLabel>
             <Select
               value={cell.type || "TEXT"}
-              onChange={(e) => updateCell("type", e.target.value)}
+              onChange={(e) => handleCellTypeChange(e.target.value)}
               label="Cell Type"
             >
               {getCellTypeOptions().map((opt) => (
@@ -192,6 +243,12 @@ export const RightPanel = ({
               ))}
             </Select>
           </FormControl>
+
+          {cellTypeWarning && (
+            <Alert severity="warning" sx={{ py: 0.5 }}>
+              <Typography variant="caption">{cellTypeWarning}</Typography>
+            </Alert>
+          )}
 
           <Divider />
 
@@ -212,6 +269,8 @@ export const RightPanel = ({
               expression={cell.expression || ""}
               variables={cell.variables || {}}
               template={template}
+              currentCellRowId={row.id}
+              currentCellColId={column?.id}
               onExpressionChange={(expr) => updateCell("expression", expr)}
               onVariablesChange={(vars) => updateCell("variables", vars)}
               formulaMode={formulaMode}
@@ -228,6 +287,7 @@ export const RightPanel = ({
                 onChange={(_, newValue) => {
                   updateCell("source.table", newValue || "");
                   updateCell("source.column", "");
+                  setCellTypeWarning(null);
                 }}
                 getOptionLabel={(option) => {
                   const table = tableConfigs.find((t) => t.tableName === option);
@@ -241,13 +301,22 @@ export const RightPanel = ({
                 size="small"
                 options={selectableColumns}
                 value={cell.source?.column || null}
-                onChange={(_, newValue) => updateCell("source.column", newValue || "")}
+                onChange={(_, newValue) => handleColumnChange(newValue || "")}
                 disabled={!selectedTable}
                 renderInput={(params) => (
                   <TextField {...params} label="Column" placeholder={selectedTable ? "Select column..." : "Select table first"} />
                 )}
                 fullWidth
               />
+
+              {selectedTable && cell.source?.column && (
+                <Box sx={{ p: 1, bgcolor: "#e8f5e9", borderRadius: 1 }}>
+                  <Typography variant="caption" color="success.dark">
+                    <strong>Supported aggregates:</strong>{" "}
+                    {getAllowedAggFuncs(selectedTable, cell.source.column).join(", ") || "None"}
+                  </Typography>
+                </Box>
+              )}
 
               <FilterBuilder
                 filters={cell.source?.filters || {}}
@@ -310,8 +379,7 @@ export const RightPanel = ({
           <Divider />
 
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-            Click another cell to edit its properties, or use the JSON export to see the complete
-            template structure.
+            Cell ID: cell_{row.id}_{column?.id}
           </Typography>
         </Box>
       </Box>

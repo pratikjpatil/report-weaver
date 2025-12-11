@@ -166,7 +166,9 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     const newColumn = {
       id: `C__${template.reportData.columns.length + 1}`,
       name: `Column ${template.reportData.columns.length + 1}`,
-      width: 150,
+      format: {
+        width: 150,
+      },
     };
 
     const updatedRows = template.reportData.rows.map((row: any) => {
@@ -442,6 +444,28 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                 }
                 fullWidth
               />
+              <TextField
+                label="Version"
+                size="small"
+                value={template.templateMeta.version || ""}
+                onChange={(e) =>
+                  updateMetadata("templateMeta.version", e.target.value)
+                }
+                placeholder="e.g., 1.0.0"
+                fullWidth
+              />
+              <TextField
+                label="Description"
+                size="small"
+                multiline
+                rows={2}
+                value={template.templateMeta.description || ""}
+                onChange={(e) =>
+                  updateMetadata("templateMeta.description", e.target.value)
+                }
+                placeholder="Template description..."
+                fullWidth
+              />
               <FormControl size="small" fullWidth>
                 <InputLabel>Page Size</InputLabel>
                 <Select
@@ -676,11 +700,11 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
                           label="Width (px)"
                           type="number"
                           size="small"
-                          value={col.width || 150}
+                          value={col.format?.width || 150}
                           onChange={(e) =>
                             updateColumn(
                               index,
-                              "width",
+                              "format.width",
                               parseInt(e.target.value) || 150
                             )
                           }

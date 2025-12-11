@@ -24,6 +24,8 @@ interface FormulaBuilderProps {
   expression: string;
   variables: any;
   template: any;
+  currentCellRowId?: string;
+  currentCellColId?: string;
   onExpressionChange: (expression: string) => void;
   onVariablesChange: (variables: any) => void;
   formulaMode: boolean;
@@ -34,6 +36,8 @@ export const FormulaBuilder = ({
   expression,
   variables,
   template,
+  currentCellRowId,
+  currentCellColId,
   onExpressionChange,
   onVariablesChange,
   formulaMode,
@@ -45,6 +49,16 @@ export const FormulaBuilder = ({
   const [newVarType, setNewVarType] = useState("CELL_REF");
   const [newVarConfig, setNewVarConfig] = useState<any>({});
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Get current cell reference for self-reference check
+  const currentCellRef = currentCellRowId && currentCellColId 
+    ? `cell_${currentCellRowId}_${currentCellColId}` 
+    : null;
+
+  // Get all dynamic row IDs to prevent referencing them in formulas
+  const dynamicRowIds: string[] = template.reportData.rows
+    .filter((r: any) => r.rowType === "DYNAMIC")
+    .map((r: any) => r.id as string);
 
   // Validate expression
   const validateExpression = useCallback(
@@ -85,41 +99,54 @@ export const FormulaBuilder = ({
       }
 
       // Check for undefined variables
-      const varPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-      const cellPattern = /cell_R__[A-Za-z0-9_]+_C__[A-Za-z0-9_]+/g;
       const knownVars = new Set(Object.keys(variables || {}));
 
-      // Extract all cell references
-      const cellRefs = expr.match(cellPattern) || [];
+      // Extract all cell references with the new format
+      const cellPattern = /cell_R__[A-Za-z0-9_]+_C__[A-Za-z0-9_]+/g;
+      const cellRefs: string[] = expr.match(cellPattern) || [];
 
-      // Validate cell references exist in template
+      // Check for self-reference
+      if (currentCellRef && cellRefs.indexOf(currentCellRef) !== -1) {
+        errors.push("Cannot reference the current cell in its own formula (circular reference)");
+      }
+
+      // Validate cell references exist in template and are not dynamic rows
       cellRefs.forEach((ref) => {
-        const match = ref.match(/cell_R__([A-Za-z0-9]+)_C__([A-Za-z0-9]+)/);
+        const match = ref.match(/cell_(R__[A-Za-z0-9_]+)_(C__[A-Za-z0-9_]+)/);
         if (match) {
           const [, rowId, colId] = match;
-          const rowExists = template.reportData.rows.some(
-            (r: any) => r.id === "R__" + rowId
-          );
-          const colExists = template.reportData.columns.some(
-            (c: any) => c.id === "C__" + colId
-          );
+          const row = template.reportData.rows.find((r: any) => r.id === rowId);
+          const colExists = template.reportData.columns.some((c: any) => c.id === colId);
 
-          if (!rowExists) {
-            errors.push(
-              `Invalid cell reference: Row "${rowId}" does not exist`
-            );
+          if (!row) {
+            errors.push(`Invalid cell reference: Row "${rowId}" does not exist`);
+          } else if (row.rowType === "DYNAMIC") {
+            errors.push(`Cannot reference dynamic row "${rowId}" in formula. Dynamic rows generate multiple rows at runtime.`);
           }
           if (!colExists) {
-            errors.push(
-              `Invalid cell reference: Column "${colId}" does not exist`
-            );
+            errors.push(`Invalid cell reference: Column "${colId}" does not exist`);
           }
         }
       });
 
+      // Check for variables that are not defined
+      const variablePattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+      let varMatch;
+      while ((varMatch = variablePattern.exec(expr)) !== null) {
+        const varName = varMatch[1];
+        // Skip if it's a cell reference part or known variable
+        if (!varName.startsWith("cell_") && !varName.startsWith("R__") && !varName.startsWith("C__") && !knownVars.has(varName)) {
+          // Check if it's not part of a cell reference
+          const context = expr.substring(Math.max(0, varMatch.index - 5), varMatch.index + varName.length + 5);
+          if (!context.includes("cell_") && !context.includes("_C__")) {
+            errors.push(`Undefined variable: "${varName}"`);
+          }
+        }
+      }
+
       return errors;
     },
-    [template, variables]
+    [template, variables, currentCellRef, dynamicRowIds]
   );
 
   useEffect(() => {
@@ -130,6 +157,24 @@ export const FormulaBuilder = ({
   useEffect(() => {
     const handleCellSelected = (event: any) => {
       const cellRef = event.detail;
+      
+      // Check if this is a self-reference
+      if (currentCellRef && cellRef === currentCellRef) {
+        setValidationErrors(prev => [...new Set([...prev, "Cannot reference the current cell in its own formula"])]);
+        return;
+      }
+
+      // Check if this is a dynamic row reference
+      const match = cellRef.match(/cell_(R__[A-Za-z0-9_]+)_(C__[A-Za-z0-9_]+)/);
+      if (match) {
+        const [, rowId] = match;
+        const row = template.reportData.rows.find((r: any) => r.id === rowId);
+        if (row?.rowType === "DYNAMIC") {
+          setValidationErrors(prev => [...new Set([...prev, `Cannot reference dynamic row "${rowId}" in formula`])]);
+          return;
+        }
+      }
+
       // Add operator if expression doesn't end with one and isn't empty
       const trimmedExpr = expression.trim();
       if (trimmedExpr && !trimmedExpr.match(/[+\-*/(\s]$/)) {
@@ -146,7 +191,7 @@ export const FormulaBuilder = ({
     window.addEventListener("formula-cell-selected", handleCellSelected);
     return () =>
       window.removeEventListener("formula-cell-selected", handleCellSelected);
-  }, [expression, onExpressionChange]);
+  }, [expression, onExpressionChange, currentCellRef, template.reportData.rows]);
 
   const addOperator = (op: string) => {
     onExpressionChange(expression + ` ${op} `);
@@ -317,6 +362,14 @@ export const FormulaBuilder = ({
             Variable
           </Button>
         </Box>
+        {formulaMode && (
+          <Alert severity="info" sx={{ mt: 1, py: 0.5 }}>
+            <Typography variant="caption">
+              Click on cells in the canvas to add them to the formula. 
+              Dynamic rows and the current cell cannot be selected.
+            </Typography>
+          </Alert>
+        )}
       </Box>
 
       <Box>

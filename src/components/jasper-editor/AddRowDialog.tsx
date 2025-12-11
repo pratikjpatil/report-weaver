@@ -27,44 +27,44 @@ export const AddRowDialog = ({
   const [customId, setCustomId] = useState("");
   const [error, setError] = useState("");
 
-  const generateDefaultId = () => `R_${Date.now()}`;
+  const generateDefaultId = () => `R__${Date.now()}`;
 
   const validateId = (id: string): string | null => {
     if (!id.trim()) return null; // Empty is OK, will use default
-    
+
     // Check for spaces
     if (/\s/.test(id)) {
       return "Row ID cannot contain spaces";
     }
-    
+
     // Check for special characters (only allow alphanumeric and underscore)
-    if (!/^[a-zA-Z0-9_]+$/.test(id)) {
-      return "Row ID can only contain letters, numbers, and underscores";
+    if (!/^R__[a-zA-Z0-9]+$/.test(id)) {
+      return "Row ID can only contain letters and numbers";
     }
-    
+
     // Check for duplicates
     if (existingRowIds.includes(id)) {
       return "This Row ID already exists";
     }
-    
+
     return null;
   };
 
   const handleIdChange = (value: string) => {
     setCustomId(value);
-    const validationError = validateId(value);
+    const validationError = validateId("R__" + value);
     setError(validationError || "");
   };
 
   const handleConfirm = () => {
-    const finalId = customId.trim() || generateDefaultId();
-    const validationError = validateId(customId);
-    
+    const finalId = "R__"+customId.trim() || generateDefaultId();
+    const validationError = validateId("R__"+customId);
+
     if (customId.trim() && validationError) {
       setError(validationError);
       return;
     }
-    
+
     onConfirm(finalId);
     setCustomId("");
     setError("");
@@ -84,24 +84,26 @@ export const AddRowDialog = ({
           <Typography variant="body2" color="text.secondary">
             Enter a custom Row ID or leave empty for auto-generated ID.
           </Typography>
-          
+
           <TextField
             label="Row ID (optional)"
             value={customId}
             onChange={(e) => handleIdChange(e.target.value)}
             placeholder="e.g., header1, data_row, total"
             error={!!error}
-            helperText={error || "Only letters, numbers, and underscores allowed"}
+            helperText={
+              error || "Only letters, numbers, and underscores allowed"
+            }
             fullWidth
             autoFocus
           />
-          
+
           {!customId.trim() && (
             <Alert severity="info" sx={{ py: 0.5 }}>
               A unique ID will be auto-generated if left empty
             </Alert>
           )}
-          
+
           {customId.trim() && !error && (
             <Alert severity="success" sx={{ py: 0.5 }}>
               Row will be created with ID: <strong>{customId}</strong>
@@ -111,11 +113,7 @@ export const AddRowDialog = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
-        <Button 
-          onClick={handleConfirm} 
-          variant="contained"
-          disabled={!!error}
-        >
+        <Button onClick={handleConfirm} variant="contained" disabled={!!error}>
           Add Row
         </Button>
       </DialogActions>

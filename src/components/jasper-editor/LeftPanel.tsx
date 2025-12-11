@@ -164,7 +164,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
 
   const addColumn = () => {
     const newColumn = {
-      id: `C_${template.reportData.columns.length + 1}`,
+      id: `C__${template.reportData.columns.length + 1}`,
       name: `Column ${template.reportData.columns.length + 1}`,
       width: 150,
     };
@@ -211,7 +211,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     template.reportData.rows.forEach((row: any, rowIndex: number) => {
       row.cells?.forEach((cell: any, cellIndex: number) => {
         if (cell.type === "FORMULA" && cell.expression) {
-          const pattern = new RegExp(`cell_R_.*?_${colId}\\b`, "g");
+          const pattern = new RegExp(`cell_R__.*?_${colId}\\b`, "g");
           if (pattern.test(cell.expression)) {
             references.push(`Row ${rowIndex + 1}, Cell ${cellIndex + 1}`);
           }
@@ -342,7 +342,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
     template.reportData.rows.forEach((row: any, rIndex: number) => {
       row.cells?.forEach((cell: any, cellIndex: number) => {
         if (cell.type === "FORMULA" && cell.expression) {
-          const pattern = new RegExp(`cell_${rowId}_C_.*?\\b`, "g");
+          const pattern = new RegExp(`cell_${rowId}_C__.*?\\b`, "g");
           if (pattern.test(cell.expression)) {
             references.push(`Row ${rIndex + 1}, Cell ${cellIndex + 1}`);
           }
@@ -362,7 +362,7 @@ export const LeftPanel = ({ template, onTemplateChange }: LeftPanelProps) => {
   };
 
   const confirmRemoveRow = (rowId: string, index: number) => {
-    const rowPattern = new RegExp(`cell_${rowId}_C_.*?\\b`, "g");
+    const rowPattern = new RegExp(`cell_${rowId}_C__.*?\\b`, "g");
 
     const updatedRows = template.reportData.rows
       .filter((r: any, i: number) => r.id !== rowId)
